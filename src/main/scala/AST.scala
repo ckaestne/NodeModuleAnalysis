@@ -94,12 +94,29 @@ case class AssignExpr(a: Expr, op: String, b: Expr) extends Expr {
   override def eval(env: Env): Value = {
     val aval = a.eval(env)
     val bval = b.eval(env)
-    aval.assign(bval)
+    aval.assign(bval, env.implicitTaints)
   }
 }
 
 case class ITEExpr(i: Expr, t: Expr, e: Expr) extends Expr {
-  override def eval(env: Env): Value = ???
+  override def eval(env: Env): Value = {
+    //TODO fix environments
+    val ival = i.eval(env)
+    val innerEnv = env.copy()
+    innerEnv.pushImplicits(ival.taints)
+    val tval = t.eval(innerEnv)
+    innerEnv.popImplicits
+    //else
+    env.pushImplicits(ival.taints)
+    val eval = e.eval(env)
+    env.popImplicits
+    env.join(env)
+
+    (ival.v, tval.v, eval.v) match {
+      case (ConcreteV(a), ConcreteV(b), ConcreteV(c)) => new Value(ConcreteV(a + "?" + b + ":" + c), ival.taints ++ tval.taints ++ eval.taints)
+      case _ => new Value(SymbolicV(ival.v + "?" + tval.v + ":" + eval.v), ival.taints ++ tval.taints ++ eval.taints)
+    }
+  }
 }
 
 case class PostExpr(a: Expr, s: String) extends Expr {
@@ -108,7 +125,13 @@ case class PostExpr(a: Expr, s: String) extends Expr {
 
 
 case class UnaryExpr(a: String, e: Expr) extends Expr {
-  override def eval(env: Env): Value = ???
+  override def eval(env: Env): Value = {
+    val eval = e.eval(env)
+    eval.v match {
+      case ConcreteV(e) => new Value(ConcreteV(a + " " + e), eval.taints)
+      case _ => new Value(SymbolicV(a + " " + eval.v), eval.taints)
+    }
+  }
 }
 
 case class FieldAcc(a: Expr, field: Id) extends Expr {
@@ -124,12 +147,12 @@ case class FunCall(a: Expr, args: List[Expr]) extends Expr {
     val argval = args.map(_.eval(env))
 
     lazy val argsTaints = argval.foldLeft(Set[Taint]())((a, arg) => a ++ arg.taints)
-    lazy val allTaints = aval.taints++argsTaints
+    lazy val allTaints = aval.taints ++ argsTaints
     aval.v match {
       case f: FunctionV => f.call(env, argval)
       case Undefined() => new Value(Undefined())
       case s: SymbolicV =>
-        System.err.println("function call with taints "+argsTaints+" to target with taints "+aval.taints)
+        System.err.println("function call with taints " + argsTaints + " to target with taints " + aval.taints)
         new Value(new SymbolicV("call on " + s), allTaints)
       case s: ConcreteV =>
         ???
@@ -170,6 +193,18 @@ case class Id(a: String) extends Expr {
 case class ConstExpr(a: String) extends Expr {
   override def eval(env: Env): Value = new Value(ConcreteV(a), Set())
 }
+
+case class ObjExpr(m: List[(String, Expr)]) extends Expr {
+  override def eval(env: Env): Value = {
+    val v = new Value(Undefined(), env.implicitTaints)
+    for ((f, e) <- m) {
+      val fv = e.eval(env)
+      v.getField(f).assign(fv, env.implicitTaints)
+    }
+    v
+  }
+}
+
 
 case class NotImplExpr(a: Any) extends Expr {
   override def eval(env: Env): Value = ???

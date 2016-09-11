@@ -36,6 +36,9 @@ class ParserTest extends FunSuite {
   test("parse leftpad") {
     execute("src/test/resources/leftpad.js")
   }
+  test("parse wordwrap") {
+    execute("src/test/resources/wordwrap.js")
+  }
   test("parse gulp") {
     execute("src/test/resources/gulp.js")
   }
@@ -62,8 +65,10 @@ class ParserTest extends FunSuite {
       println(s)
 
     val env = Env.empty
-    env.setVar("module", Value(ConcreteV(""), Set(Taint("MOD"))))
-    env.setVar("require", Value(new RequireFunction(), Set(Taint("REQ"))))
+    val export = Value(ConcreteV(""), Set(ExportsTaint))
+    env.setVar("module", Value(ConcreteV(""), Set(ModuleTaint), Map("exports" -> export)))
+    env.setVar("exports", export)
+    env.setVar("require", Value(new RequireFunction(), Set(RequestTaint)))
     prog.execute(env)
     println(env)
 
@@ -75,31 +80,16 @@ class ParserTest extends FunSuite {
     def analyzeExported(name: String, f: V): Unit = {
       if (!f.isInstanceOf[FunctionV]) return
       val fun = f.asInstanceOf[FunctionV]
-      println("# analyzing export "+name)
+      println("# analyzing export " + name)
       val env = Env.empty
       val args = for (p <- fun.funExpr.param) yield
         new Value(new SymbolicV("param-" + p.a), Set(new Taint("IN-" + p.a)))
       val result = fun.call(env, args)
-      if (result.taints.nonEmpty) System.err.println("returning result with taints "+result.taints)
+      if (result.taints.nonEmpty) System.err.println("returning result with taints " + result.taints)
     }
     analyzeExported("module.exports", exports.v)
-    exports.members.map(a=>analyzeExported(a._1,a._2.v))
+    exports.members.map(a => analyzeExported(a._1, a._2.v))
 
-
-  }
-
-
-  class RequireFunction extends FunctionV(FunExpr(None, Nil, EmptyStmt()), None) {
-    override def call(env: Env, args: List[Value]): Value = {
-      if (args.isEmpty) return new Value(Undefined())
-      args.head.v match {
-        case ConcreteV(s) =>
-          new Value(new SymbolicV("module " + s), Set(new Taint("module:" + s)))
-        case e =>
-          System.err.println("cannot resolve `require` call statically")
-          new Value(new SymbolicV("any module"), Set(new Taint("ANYMODULE")))
-      }
-    }
 
   }
 

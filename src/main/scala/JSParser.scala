@@ -27,7 +27,7 @@ class JSParser extends RegexParsers {
       "continue" ~ ";" ^^ NotImplStmt |
       "with" ~ "(" ~ Expression ~ ")" ~ Statement ^^ NotImplStmt |
       "return" ~> Expression.? <~ ";" ^^ ReturnStmt |
-      CompoundStatement ^^ NotImplStmt |
+      CompoundStatement |
       VariablesOrExpression <~ ";"
 
 
@@ -108,17 +108,18 @@ class JSParser extends RegexParsers {
 
   def ArrayLiteral: Parser[Expr] = "[" ~ repsep(rep(",") ~ AssignmentExpression, ",") ~ "]" ^^ NotImplExpr
 
-  def ObjectLiteral: Parser[Expr] = "{" ~ repsep(PropertyAssignment, ",") ~ opt(",") ~ "}" ^^ NotImplExpr
+  def ObjectLiteral: Parser[ObjExpr] = "{" ~> repsep(PropertyAssignment, ",") <~ opt(",") ~ "}" ^^ ObjExpr
 
-  def PropertyAssignment: Parser[Any] =
-    PropertyName ~ ":" ~ AssignmentExpression |
-      "get" ~ PropertyName ~ "(" ~ ")" ~ CompoundStatement |
-      "set" ~ PropertyName ~ "(" ~ Identifier ~ ")" ~ CompoundStatement
+  def PropertyAssignment: Parser[(String,Expr)] =
+    (PropertyName <~ ":") ~ AssignmentExpression ^^ {case a~b=>(a,b)}
+//  |
+//      "get" ~ PropertyName ~ "(" ~ ")" ~ CompoundStatement |
+//      "set" ~ PropertyName ~ "(" ~ Identifier ~ ")" ~ CompoundStatement
 
-  def PropertyName =
-    Identifier |
-      StringLiteral |
-      IntegerLiteral
+  def PropertyName: Parser[String] =
+    Identifier ^^ {_.a} |
+      StringLiteral ^^ {_.a} |
+      IntegerLiteral ^^ {_.a}
 
 
   def Identifier: Parser[Id] = """[a-zA-Z_][a-zA-Z0-9_]*""".r ^^ Id
@@ -132,7 +133,8 @@ class JSParser extends RegexParsers {
 
   def StringLiteral = //TODO fix
     "\"[^\"]*\"".r ^^ Lit |
-      "'[^']*'".r ^^ Lit
+      "'[^']*'".r ^^ Lit   |
+      "/[^/]*/g?".r ^^ Lit
 
 
   def assignExpr(a: Expr ~ Option[String ~ Expr]) = a match {
