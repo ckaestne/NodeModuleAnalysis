@@ -1,211 +1,203 @@
 package edu.cmu.cs.nodesec
 
+import VariableHelper._
 
-trait Stmt {
-  def execute(env: Env)
+sealed trait AST extends Product {
+  override def equals(that: Any) = that match {
+    case thatRef: AnyRef => this eq thatRef
+    case _ => false
+  }
+}
+
+trait Stmt extends AST {
+
+  def toVM(): Statement
+
 }
 
 case class ExpressionStmt(expr: Expr) extends Stmt {
-  override def execute(env: Env) = expr.eval(env)
+  def toVM(): Statement = expr.toVM._1
 }
 
 case class WhileStmt(expr: Expr, body: Stmt) extends Stmt {
-  override def execute(env: Env) = {
-    val v = expr.eval(env)
-    val innerEnv = env.copy()
-    innerEnv.pushImplicits(v.taints)
-    body.execute(innerEnv)
-    innerEnv.popImplicits
-    env.join(env)
-  }
+  def toVM(): Statement = body.toVM() ++ expr.toVM._1
 }
 
 case class IfStmt(expr: Expr, t: Stmt, e: Option[Stmt]) extends Stmt {
-  override def execute(env: Env) = {
-    val v = expr.eval(env)
-    val innerEnv = env.copy()
-    innerEnv.pushImplicits(v.taints)
-    t.execute(innerEnv)
-    innerEnv.popImplicits
-    //else
-    if (e.isDefined) {
-      env.pushImplicits(v.taints)
-      e.get.execute(env)
-      env.popImplicits
-    }
-    env.join(env)
-  }
+  def toVM(): Statement = e.map(_.toVM()).getOrElse(emptyStatement) ++ t.toVM() ++ expr.toVM._1
 }
 
 
 case class ReturnStmt(expr: Option[Expr]) extends Stmt {
-  override def execute(env: Env) = {
-    if (expr.isDefined) {
-      val v = expr.get.eval(env)
-      env.setReturn(Some(v))
-    } else
-      env.setReturn(None)
+  private def emptyReturn = {
+    val r = freshVar
+    (PrimAssignment(r), r)
+  }
+
+  def toVM(): Statement = {
+    val (s, v) = expr.map(_.toVM).getOrElse(emptyReturn)
+    Return(v) ++ s
   }
 }
 
 case class CompoundStmt(inner: List[Stmt]) extends Stmt {
-  override def execute(env: Env) = {
-    for (stmt <- inner; if !env.hasReturned)
-      stmt.execute(env)
-  }
+  def toVM(): Statement = inner.map(_.toVM).reverse.fold(emptyStatement)(_ ++ _)
 }
 
 case class VarStmt(vars: List[VarDef]) extends Stmt {
-  override def execute(env: Env) = for (v <- vars) {
-    val init = v.init.map(_.eval(env)).getOrElse(new Value(Undefined()))
-    env.setVar(v.name.a, init)
+
+  private def toDefStmt(n: String, e: Expr): Statement = {
+    val (s, v) = e.toVM
+    Assignment(new NamedVariable(n), v) ++ s
   }
+
+  def toVM(): Statement = vars.filter(_.init.isDefined).map(x => toDefStmt(x.name.a, x.init.get)).fold(emptyStatement)(_ ++ _)
 }
 
 case class EmptyStmt() extends Stmt {
-  override def execute(env: Env) {}
+  def toVM(): Statement = emptyStatement
 }
 
 
 case class NotImplStmt(inner: Any) extends Stmt {
-  override def execute(env: Env) = ???
+  def toVM(): Statement = ???
 }
 
 case class VarDef(name: Id, init: Option[Expr])
 
 
-trait Expr {
-  def eval(env: Env): Value
+trait Expr extends AST {
+
+  def toVM: (Statement, Variable)
+
+  //  def eval(env: Env): Value
 }
 
 case class BinExpr(a: Expr, op: String, b: Expr) extends Expr {
-  override def eval(env: Env): Value = {
-    val aval = a.eval(env)
-    val bval = b.eval(env)
-    (aval.v, bval.v) match {
-      case (ConcreteV(a), ConcreteV(b)) => new Value(ConcreteV(a + op + b), aval.taints ++ bval.taints)
-      case _ => new Value(SymbolicV(aval.v + op + bval.v), aval.taints ++ bval.taints)
-    }
+
+  def toVM: (Statement, Variable) = {
+    var (s1, v1) = a.toVM
+    var (s2, v2) = b.toVM
+    var r = freshVar
+    (OpStatement(r, v1, v2) ++ s1 ++ s2, r)
   }
+
 }
 
 
 case class AssignExpr(a: Expr, op: String, b: Expr) extends Expr {
-  override def eval(env: Env): Value = {
-    val aval = a.eval(env)
-    val bval = b.eval(env)
-    aval.assign(bval, env.implicitTaints)
-  }
+
+  def toVM: (Statement, Variable) =
+    a match {
+      case FieldAcc(targ, field) =>
+        val (s1, v1) = targ.toVM
+        val (s2, v2) = b.toVM
+        //TODO look up evaluation order
+        (Store(v1, field.a, v2) ++ s1 ++ s2, v2)
+      case _ =>
+        val (s1, v1) = a.toVM
+        val (s2, v2) = b.toVM
+        //TODO look up evaluation order
+        (Assignment(v1, v2) ++ s1 ++ s2, v1)
+
+    }
+
+
 }
 
 case class ITEExpr(i: Expr, t: Expr, e: Expr) extends Expr {
-  override def eval(env: Env): Value = {
-    //TODO fix environments
-    val ival = i.eval(env)
-    val innerEnv = env.copy()
-    innerEnv.pushImplicits(ival.taints)
-    val tval = t.eval(innerEnv)
-    innerEnv.popImplicits
-    //else
-    env.pushImplicits(ival.taints)
-    val eval = e.eval(env)
-    env.popImplicits
-    env.join(env)
-
-    (ival.v, tval.v, eval.v) match {
-      case (ConcreteV(a), ConcreteV(b), ConcreteV(c)) => new Value(ConcreteV(a + "?" + b + ":" + c), ival.taints ++ tval.taints ++ eval.taints)
-      case _ => new Value(SymbolicV(ival.v + "?" + tval.v + ":" + eval.v), ival.taints ++ tval.taints ++ eval.taints)
-    }
+  def toVM: (Statement, Variable) = {
+    val (si, vi) = i.toVM
+    val (st, vt) = t.toVM
+    val (se, ve) = e.toVM
+    val r = freshVar
+    (OpStatement(r, vt, ve) ++ se ++ st ++ si, r)
   }
+
+
 }
 
 case class PostExpr(a: Expr, s: String) extends Expr {
-  override def eval(env: Env): Value = ???
+  def toVM: (Statement, Variable) = a.toVM
 }
 
 
 case class UnaryExpr(a: String, e: Expr) extends Expr {
-  override def eval(env: Env): Value = {
-    val eval = e.eval(env)
-    eval.v match {
-      case ConcreteV(e) => new Value(ConcreteV(a + " " + e), eval.taints)
-      case _ => new Value(SymbolicV(a + " " + eval.v), eval.taints)
-    }
-  }
+  def toVM: (Statement, Variable) = if (Set("+", "++", "-", "--", "!", "typeof") contains a) e.toVM else ???
+
 }
 
 case class FieldAcc(a: Expr, field: Id) extends Expr {
-  override def eval(env: Env): Value = {
-    val aval = a.eval(env)
-    aval.getField(field.a)
+  def toVM: (Statement, Variable) = {
+    val (s, v) = a.toVM
+    val r = freshVar
+    (Load(r, v, field.a) ++ s, r)
   }
 }
 
 case class FunCall(a: Expr, args: List[Expr]) extends Expr {
-  override def eval(env: Env): Value = {
-    val aval = a.eval(env)
-    val argval = args.map(_.eval(env))
+  def toVM: (Statement, Variable) = {
+    val (fs, fv) = a.toVM
+    val argV = args.map(_.toVM)
+    val argStmts: Statement = argV.map(_._1).foldRight(emptyStatement)(_ ++ _)
 
-    lazy val argsTaints = argval.foldLeft(Set[Taint]())((a, arg) => a ++ arg.taints)
-    lazy val allTaints = aval.taints ++ argsTaints
-    aval.v match {
-      case f: FunctionV => f.call(env, argval)
-      case Undefined() => new Value(Undefined())
-      case s: SymbolicV =>
-        System.err.println("function call with taints " + argsTaints + " to target with taints " + aval.taints)
-        new Value(new SymbolicV("call on " + s), allTaints)
-      case s: ConcreteV =>
-        ???
-    }
+    val r = freshVar
+    (Call(r, fv, thisVar, argV.map(_._2)) ++ argStmts ++ fs, r)
   }
 }
 
 case class NewExpr(a: Expr, args: List[Expr]) extends Expr {
-  override def eval(env: Env): Value = {
-    val aval = a.eval(env)
-    val argval = args.map(_.eval(env))
+  def toVM: (Statement, Variable) = {
+    val (fs, fv) = a.toVM
+    val argV = args.map(_.toVM)
+    val argStmts: Statement = argV.map(_._1).foldRight(emptyStatement)(_ ++ _)
 
-    lazy val allTaints = argval.foldLeft(aval.taints)((a, arg) => a ++ arg.taints)
-    aval.v match {
-      case FunctionV(fun, closure) => ???
-      case Undefined() => new Value(Undefined())
-      case s: SymbolicV =>
-        new Value(new SymbolicV("call on " + s), allTaints)
-      case s: ConcreteV =>
-        ???
-    }
+    val r = freshVar
+    (Constructor(r, fv, argV.map(_._2)) ++ argStmts ++ fs, r)
   }
 }
 
 
 case class FunExpr(name: Option[Id], param: List[Id], body: Stmt) extends Expr {
-  override def eval(env: Env): Value = new Value(FunctionV(this, Some(env)))
+  def toVM: (Statement, Variable) = {
+    val funr = name.map(x => new NamedVariable(x.a)).getOrElse(freshVar)
+    (FunDecl(funr, param.map(x => new NamedVariable(x.a)), body.toVM), funr)
+  }
 }
 
+
 case class Lit(a: String) extends Expr {
-  override def eval(env: Env): Value = new Value(ConcreteV(a), Set())
+  def toVM: (Statement, Variable) = {
+    val r = freshVar
+    (PrimAssignment(r), r)
+  }
 }
 
 case class Id(a: String) extends Expr {
-  override def eval(env: Env): Value = env.lookup(a)
+  def toVM: (Statement, Variable) = (emptyStatement, new NamedVariable(a))
 }
 
 case class ConstExpr(a: String) extends Expr {
-  override def eval(env: Env): Value = new Value(ConcreteV(a), Set())
+  def toVM: (Statement, Variable) = {
+    val r = freshVar
+    (PrimAssignment(r), r)
+  }
 }
 
 case class ObjExpr(m: List[(String, Expr)]) extends Expr {
-  override def eval(env: Env): Value = {
-    val v = new Value(Undefined(), env.implicitTaints)
-    for ((f, e) <- m) {
-      val fv = e.eval(env)
-      v.getField(f).assign(fv, env.implicitTaints)
+  def toVM: (Statement, Variable) = {
+    val r = freshVar
+    var result: Statement = Constructor(r, new ConstString("Object"), Nil)
+    for (field <- m) {
+      val (s, v) = field._2.toVM
+      result = Store(r, field._1, v) ++ s ++ result
     }
-    v
+
+    (result, r)
   }
 }
 
 
 case class NotImplExpr(a: Any) extends Expr {
-  override def eval(env: Env): Value = ???
+  def toVM: (Statement, Variable) = ???
 }

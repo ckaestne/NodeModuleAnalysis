@@ -13,7 +13,7 @@ class ParserTest extends FunSuite {
   def ps(r: p.ParseResult[Any]): Unit = {
     println(r)
     r match {
-      case p.Success(r, _) =>
+      case p.Success(_, _) =>
       case p.NoSuccess(msg, rest) => fail("parsing failed: " + msg)
     }
   }
@@ -33,6 +33,9 @@ class ParserTest extends FunSuite {
     //    println(p.parseAll(p.word, "foo bar"))
   }
 
+  test("parse test") {
+    execute("src/test/resources/test.js")
+  }
   test("parse leftpad") {
     execute("src/test/resources/leftpad.js")
   }
@@ -61,34 +64,43 @@ class ParserTest extends FunSuite {
     if (!parsed.successful) println(parsed)
     val prog = parsed.get
 
-    for (s <- prog.inner)
-      println(s)
+//    for (s <- prog.inner)
+//      println(s)
 
-    val env = Env.empty
-    val export = Value(ConcreteV(""), Set(ExportsTaint))
-    env.setVar("module", Value(ConcreteV(""), Set(ModuleTaint), Map("exports" -> export)))
-    env.setVar("exports", export)
-    env.setVar("require", Value(new RequireFunction(), Set(RequestTaint)))
-    prog.execute(env)
-    println(env)
 
-    println("# exports")
-    val exports = env.vars("module").members("exports")
-    println(exports.v)
-    exports.members.keys.map(println)
+//    val result = new Analysis().analyze(prog)
+//    println(result)
+//    assert(result.isEmpty, result.mkString("\n"))
+    prog.toVM().asInstanceOf[Sequence].s.reverse.foreach(println)
+    println("#############")
+    new AliasAnalysis().analyze(prog.toVM())
+//    println(prog.toVM())
 
-    def analyzeExported(name: String, f: V): Unit = {
-      if (!f.isInstanceOf[FunctionV]) return
-      val fun = f.asInstanceOf[FunctionV]
-      println("# analyzing export " + name)
-      val env = Env.empty
-      val args = for (p <- fun.funExpr.param) yield
-        new Value(new SymbolicV("param-" + p.a), Set(new Taint("IN-" + p.a)))
-      val result = fun.call(env, args)
-      if (result.taints.nonEmpty) System.err.println("returning result with taints " + result.taints)
-    }
-    analyzeExported("module.exports", exports.v)
-    exports.members.map(a => analyzeExported(a._1, a._2.v))
+//    val env = Env.empty
+//    val export = Value(ConcreteV(""), Set(ExportsTaint))
+//    env.setVar("module", Value(ConcreteV(""), Set(ModuleTaint), Map("exports" -> export)))
+//    env.setVar("exports", export)
+//    env.setVar("require", Value(new RequireFunction(), Set(RequestTaint)))
+//    prog.execute(env)
+//    println(env)
+//
+//    println("# exports")
+//    val exports = env.vars("module").members("exports")
+//    println(exports.v)
+//    exports.members.keys.map(println)
+//
+//    def analyzeExported(name: String, f: V): Unit = {
+//      if (!f.isInstanceOf[FunctionV]) return
+//      val fun = f.asInstanceOf[FunctionV]
+//      println("# analyzing export " + name)
+//      val env = Env.empty
+//      val args = for (p <- fun.funExpr.param) yield
+//        new Value(new SymbolicV("param-" + p.a), Set(new Taint("IN-" + p.a)))
+//      val result = fun.call(env, args)
+//      if (result.taints.nonEmpty) System.err.println("returning result with taints " + result.taints)
+//    }
+//    analyzeExported("module.exports", exports.v)
+//    exports.members.map(a => analyzeExported(a._1, a._2.v))
 
 
   }
