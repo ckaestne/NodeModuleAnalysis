@@ -20,7 +20,7 @@ case class ExpressionStmt(expr: Expr) extends Stmt {
 }
 
 case class WhileStmt(expr: Expr, body: Stmt) extends Stmt {
-  def toVM(): Statement = body.toVM() ++ expr.toVM._1
+  def toVM(): Statement = LoopStatement(body.toVM()) ++ expr.toVM._1
 }
 
 case class IfStmt(expr: Expr, t: Stmt, e: Option[Stmt]) extends Stmt {
@@ -49,6 +49,7 @@ case class CompoundStmt(inner: List[Stmt]) extends Stmt {
 
   private def findVars(s: Stmt): Statement = s match {
     case VarStmt(vars) => vars.map(v => PrimAssignment(new NamedVariable(v.name.a))).fold(emptyStatement)(_ ++ _)
+    case ExpressionStmt(f: FunExpr) => PrimAssignment(f.variable)
     case CompoundStmt(inner) => inner.map(findVars).fold(emptyStatement)(_ ++ _)
     case IfStmt(_, t, e) => findVars(t) ++ e.map(findVars).getOrElse(emptyStatement)
     case WhileStmt(_, b) => findVars(b)
@@ -171,9 +172,10 @@ case class NewExpr(a: Expr, args: List[Expr]) extends Expr {
 
 
 case class FunExpr(name: Option[Id], param: List[Id], body: Stmt) extends Expr {
+  lazy val variable = name.map(x => new NamedVariable(x.a)).getOrElse(freshVar)
+
   def toVM: (Statement, Variable) = {
-    val funr = name.map(x => new NamedVariable(x.a)).getOrElse(freshVar)
-    (FunDecl(funr, param.map(x => new NamedVariable(x.a)), body.toVM), funr)
+    (FunDecl(variable, param.map(x => new NamedVariable(x.a)), body.toVM), variable)
   }
 }
 

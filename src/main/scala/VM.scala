@@ -45,6 +45,7 @@ case class Sequence(s: List[Statement]) extends Statement {
 case class Assignment(l: Variable, r: Variable) extends Statement
 
 case class PrimAssignment(l: Variable) extends Statement
+
 case class ConstAssignment(l: Variable, v: String) extends Statement
 
 case class OpStatement(result: Variable, v1: Variable, v2: Variable) extends Statement
@@ -62,3 +63,5 @@ case class Store(target: Variable, field: String, v: Variable) extends Statement
 case class FunDecl(v: Variable, args: List[Variable], body: Statement) extends Statement
 
 case class ConditionalStatement(alt1: Statement, alt2: Statement) extends Statement
+
+case class LoopStatement(inner: Statement) extends Statement

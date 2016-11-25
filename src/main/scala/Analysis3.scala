@@ -5,82 +5,169 @@ package edu.cmu.cs.nodesec
   */
 class Analysis3 {
 
-  sealed trait Value
+  sealed trait Value {
+    def isUnknown: Boolean = false
+  }
 
-  case class Constant(s: String) extends Value
+  case class Constant(s: String) extends Obj
 
-  class Obj(members: Map[String, Value]) extends Value
-  class Fun(f: FunDecl) extends Value
-
+  //primitive values include all nonobjects, including "undefined"
   object PrimitiveValue extends Value
 
-  object UnknownValue extends Value
-
-  private def freshObject = new Obj(Map())
-
-  val requireObject = freshObject
-
-  trait Env {
-    def lookup(name: Variable): Set[Value]
-
-    def store(name: Variable, value: Set[Value])
-
-    def put(name: Variable, value: Value) = store(name, lookup(name) + value)
+  class Obj(_name: String = NameHelper.genObjectName) extends Value {
+    //name is for debugging only
+    override def toString: String = _name
   }
 
-  case class Environment(var store: Map[Variable, Set[Value]], outer: Env) extends Env {
-    override def lookup(name: Variable): Set[Value] = store.getOrElse(name, Set(UnknownValue))
+  class Fun(f: FunDecl, _name: String = NameHelper.genFunctionName) extends Obj(_name)
 
-    override def store(name: Variable, value: Set[Value]): Unit = store += (name -> value) //TODO merge with existing value
+  class UnknownValue extends Obj {
+    override def isUnknown: Boolean = true
+    override def toString: String = "unknown-"+super.toString
   }
 
-  object EmptyEnvironment extends Env {
-    override def lookup(name: Variable): Set[Value] = Set(UnknownValue)
 
-    override def store(name: Variable, value: Set[Value]): Unit = ???
+  private def freshObject = new Obj()
+
+  private def freshUnknownObject = new UnknownValue()
+
+  val requireObject = new Obj("obj-require")
+  val moduleObject = new Obj("obj-module")
+  val exportsObject = new Obj("obj-exports")
+
+
+  case class Env(store: Map[Variable, Set[Value]], members: Map[Obj, Map[String, Set[Value]]], thisObj: Obj, outerEnv: Option[Env]) {
+
+    def lookupOpt(name: Variable): Option[Set[Value]] = store.get(name)
+
+    def lookup(name: Variable): (Set[Value], Env) = {
+      val r = lookupOpt(name)
+      if (r.isDefined) (r.get, this)
+      else {
+        val obj = Set[Value](freshUnknownObject)
+        (obj, this.store(name, obj))
+      }
+    }
+
+    //assignment killing previous assignments
+    def store(name: Variable, value: Set[Value]): Env = this.copy(store = store + (name -> value))
+
+    //    def kill(name: Variable): Env = this.copy(store = store - name)
+
+    def storeField(v1: Variable, f: String, values: Set[Value]): Env = {
+      //stores to Primitive types are ignored
+      var (vals, env) = lookup(v1)
+      vals foreach {
+        case o: Obj =>
+          env = env.storeField(o, f, values)
+        case _ => assert3(false, "store to primitive value not expected")
+      }
+      env
+    }
+
+    def storeField(o: Obj, f: String, values: Set[Value]): Env = {
+      val omembers = members.getOrElse(o, Map())
+      this.copy(members = members + (o -> (omembers + (f -> values))))
+    }
+
+    def lookupField(v: Variable, f: String): (Set[Value], Env) = {
+      //a little complicated, because we want to reflect every read as a change
+      //to the environment, such that the next read will produce the same
+      //unknown object
+      var (values, env) = lookup(v)
+      var result: Set[Value] = Set()
+      values foreach {
+        case o: Obj =>
+          if (!env.members.contains(o))
+            env = env.copy(members = env.members + (o -> Map(f -> Set[Value](freshUnknownObject))))
+          var omembers = env.members(o)
+          if (!omembers.contains(f)) {
+            omembers = omembers + (f -> Set[Value](freshUnknownObject))
+            env = env.copy(members = env.members + (o -> omembers))
+          }
+          result ++= omembers(f)
+        case _ => assert3(false, "load from primitive value not expected")
+      }
+
+      (result, env)
+    }
+
+
+    def union(that: Env): Env = {
+      assert(this.outerEnv == that.outerEnv, "outerEnv changed in branch; this is unexpected")
+      assert(this.thisObj == that.thisObj, "thisObj changed in branch; this is unexpected")
+      Env(relUnion(this.store, that.store, () => Set(freshUnknownObject)),
+        rel3Union(this.members, that.members, () => Set(freshUnknownObject)), thisObj, outerEnv)
+    }
+
+    private def relUnion[A, B](a: Map[A, Set[B]], b: Map[A, Set[B]], emptySet: () => Set[B]): Map[A, Set[B]] = {
+      ((a.keySet ++ b.keySet) map { k => k -> (a.getOrElse(k, emptySet()) ++ b.getOrElse(k, emptySet())) }).toMap
+    }
+
+    private def rel3Union[A, B, C](a: Map[A, Map[B, Set[C]]], b: Map[A, Map[B, Set[C]]], emptySet: () => Set[C]): Map[A, Map[B, Set[C]]] = {
+      ((a.keySet ++ b.keySet) map{ k => k -> relUnion(a.getOrElse(k, Map.empty), b.getOrElse(k, Map.empty), emptySet) }).toMap
+    }
+
   }
 
-  case class Context(env: Env, thisObj: Value) {
-    def split(): Context =
-      new Context(env)
-
-
-  }
 
   def analyze(p: Statement): Unit = {
-    val globalEnv = Environment(Map(), EmptyEnvironment)
-    globalEnv.store(new NamedVariable("require"), Set(requireObject))
     val thisObj = freshObject
-    a(Context(globalEnv, thisObj), p)
+    var globalEnv = Env(Map(), Map(), thisObj, None)
+    globalEnv = globalEnv.store(NamedVariable("require"), Set(requireObject))
+    globalEnv = globalEnv.store(NamedVariable("module"), Set(moduleObject))
+    globalEnv = globalEnv.store(NamedVariable("exports"), Set(exportsObject))
+    globalEnv = globalEnv.storeField(moduleObject, "exports", Set[Value](exportsObject))
+    analyze(globalEnv, p)
   }
 
-
-  private def a(c: Context, p: Statement): Unit = p match {
-    case Sequence(s) => s.reverse.foreach(a(c, _))
-    case Assignment(l, r) =>
-      c.env.store(l,
-        c.env.lookup(r))
-    case PrimAssignment(l) =>
-      c.env.store(l, Set(PrimitiveValue))
-    case ConstAssignment(v, s) =>
-      c.env.store(v, Set(new Constant(s)))
-    case Call(v, v0, vthis, vargs) =>
-      val receiver = c.env.lookup(v0)
-      assert3(!(receiver contains requireObject), "call to require function found with arguments "+lookupArgs(c, vargs))
-      assert3(!(receiver contains UnknownValue), "call to unknown value found")
-    case f:FunDecl =>
-      c.env.put(f.v, new Fun(f))
+  private def analyze(env: Env, p: Statement): Env = p match {
+    case Sequence(inner) =>
+      inner.foldRight(env)((s, env) => analyze(env, s))
     case ConditionalStatement(alt1, alt2) =>
-      val c2 = c.split()
-      a(c, alt1)
-      a(c2, alt2)
-      c.join(c2)
+      val env1 = analyze(env, alt1)
+      val env2 = analyze(env, alt2)
+      env1 union env2
+    case LoopStatement(inner) =>
+      val newEnv = analyze(env, inner)
+      if (newEnv == env)
+        newEnv
+      else analyze(newEnv, p) //iterate until fixpoint
+    case stmt =>
+      transfer(env, stmt)
+  }
+
+  private def transfer(env: Env, p: Statement): Env = p match {
+    case Assignment(l, r) =>
+      val (v, newEnv) = env.lookup(r)
+      newEnv.store(l, v)
+    case PrimAssignment(l) =>
+      env.store(l, Set(PrimitiveValue))
+    case ConstAssignment(v, s) =>
+      env.store(v, Set(new Constant(s)))
+    case Call(v, v0, vthis, vargs) =>
+      val (receiver, newEnv) = env.lookup(v0)
+      assert3(!(receiver contains requireObject), "call to require function found with arguments " + lookupArgs(env, vargs) + " -- " + receiver)
+      assert3(!receiver.exists(_.isUnknown), "call to unknown value found")
+      newEnv
+    case f: FunDecl =>
+      env.store(f.v, Set(new Fun(f)))
+    case Store(v1, f, v2) =>
+      val (receiver, newEnv) = env.lookup(v1)
+      receiver.foreach(v => assert3(!v.isUnknown, s"store to field unknown object found ($v.$f)"))
+      val (value, newEnv2) = newEnv.lookup(v2)
+      newEnv2.storeField(v1, f, value)
+    case Load(v1, v2, f) =>
+      val (value, newEnv) = env.lookupField(v2, f)
+      newEnv.store(v1, value)
+    case Constructor(v, clsNameVar, params) =>
+      //TODO prototype
+      env.store(v, Set(freshObject))
   }
 
 
-
-  private def lookupArgs(c: Context, args: List[Variable]): String =
-    args.map(c.env.lookup).map(_.mkString("[",",","]")).mkString(", ")
+  private def lookupArgs(env: Env, args: List[Variable]): String =
+    args.map(env.lookup).map(_._1.mkString("[", ",", "]")).mkString(", ")
 
 
   private def assert3(c: Boolean, msg: String) =
@@ -90,3 +177,19 @@ class Analysis3 {
 }
 
 class Analysis3Exception(msg: String) extends RuntimeException(msg)
+
+object NameHelper {
+  var objectCounter = 0
+
+  def genObjectName = {
+    objectCounter += 1
+    "obj" + objectCounter
+  }
+
+  var functionCounter = 0
+
+  def genFunctionName = {
+    functionCounter += 1
+    "fun" + functionCounter
+  }
+}
