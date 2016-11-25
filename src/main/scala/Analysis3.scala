@@ -23,13 +23,22 @@ class Analysis3 {
 
   class UnknownValue extends Obj {
     override def isUnknown: Boolean = true
-    override def toString: String = "unknown-"+super.toString
+
+    override def toString: String = "unknown-" + super.toString
   }
+
+  class MethodReturnValue(target: Set[Value], thisObj: Set[Value], args: List[Set[Value]]) extends UnknownValue {
+    override def toString: String = "ret-" + super.toString
+  }
+
+  class UnknownLoadValue(val stmt: Load) extends UnknownValue
 
 
   private def freshObject = new Obj()
 
   private def freshUnknownObject = new UnknownValue()
+
+  private def freshUnknownLoadObject(stmt: Load) = new UnknownLoadValue(stmt)
 
   val requireObject = new Obj("obj-require")
   val moduleObject = new Obj("obj-module")
@@ -70,19 +79,25 @@ class Analysis3 {
       this.copy(members = members + (o -> (omembers + (f -> values))))
     }
 
-    def lookupField(v: Variable, f: String): (Set[Value], Env) = {
+    def lookupField(v: Variable, f: String, loadStmt: Load): (Set[Value], Env) = {
       //a little complicated, because we want to reflect every read as a change
       //to the environment, such that the next read will produce the same
       //unknown object
+
+      //furthermore to avoid infinite loops on cyclic access path's, we
+      //follow Whaley's strategy to create cycles in the heap
+
       var (values, env) = lookup(v)
       var result: Set[Value] = Set()
       values foreach {
         case o: Obj =>
+          lazy val targetObj = createTargetObj(o, loadStmt)
+
           if (!env.members.contains(o))
-            env = env.copy(members = env.members + (o -> Map(f -> Set[Value](freshUnknownObject))))
+            env = env.copy(members = env.members + (o -> Map(f -> Set[Value](targetObj))))
           var omembers = env.members(o)
           if (!omembers.contains(f)) {
-            omembers = omembers + (f -> Set[Value](freshUnknownObject))
+            omembers = omembers + (f -> Set[Value](targetObj))
             env = env.copy(members = env.members + (o -> omembers))
           }
           result ++= omembers(f)
@@ -92,12 +107,35 @@ class Analysis3 {
       (result, env)
     }
 
+    private def createTargetObj(o: Obj, loadStmt: Load): Obj = {
+      //search for objects that point to this object; if any of those are unknown objects
+      //from the same load instruction, we have found a cycle; return that object instead
+
+      var todo: List[Obj] = o :: Nil
+      var done: Set[Obj] = Set()
+      while (todo.nonEmpty) {
+        var obj = todo.head
+        obj match {
+          case a: UnknownLoadValue if a.stmt == loadStmt => return obj
+          case _ =>
+        }
+        todo = todo.tail
+        done += obj
+        val directBases = findDirectBases(o)
+        todo = (directBases -- done).toList ++ todo
+      }
+      return freshUnknownLoadObject(loadStmt)
+    }
+
+    //find any object with a field pointing to o
+    private def findDirectBases(o: Obj): Set[Obj] = members.filter(_._2.exists(_._2 contains o)).keySet
+
 
     def union(that: Env): Env = {
       assert(this.outerEnv == that.outerEnv, "outerEnv changed in branch; this is unexpected")
       assert(this.thisObj == that.thisObj, "thisObj changed in branch; this is unexpected")
-      Env(relUnion(this.store, that.store, () => Set(freshUnknownObject)),
-        rel3Union(this.members, that.members, () => Set(freshUnknownObject)), thisObj, outerEnv)
+      Env(relUnion(this.store, that.store, () => Set()),
+        rel3Union(this.members, that.members, () => Set()), thisObj, outerEnv)
     }
 
     private def relUnion[A, B](a: Map[A, Set[B]], b: Map[A, Set[B]], emptySet: () => Set[B]): Map[A, Set[B]] = {
@@ -105,13 +143,13 @@ class Analysis3 {
     }
 
     private def rel3Union[A, B, C](a: Map[A, Map[B, Set[C]]], b: Map[A, Map[B, Set[C]]], emptySet: () => Set[C]): Map[A, Map[B, Set[C]]] = {
-      ((a.keySet ++ b.keySet) map{ k => k -> relUnion(a.getOrElse(k, Map.empty), b.getOrElse(k, Map.empty), emptySet) }).toMap
+      ((a.keySet ++ b.keySet) map { k => k -> relUnion(a.getOrElse(k, Map.empty), b.getOrElse(k, Map.empty), emptySet) }).toMap
     }
 
   }
 
 
-  def analyze(p: Statement): Unit = {
+  def analyze(p: Statement): Env = {
     val thisObj = freshObject
     var globalEnv = Env(Map(), Map(), thisObj, None)
     globalEnv = globalEnv.store(NamedVariable("require"), Set(requireObject))
@@ -129,7 +167,7 @@ class Analysis3 {
       val env2 = analyze(env, alt2)
       env1 union env2
     case LoopStatement(inner) =>
-      val newEnv = analyze(env, inner)
+      val newEnv = analyze(env, inner).union(env)
       if (newEnv == env)
         newEnv
       else analyze(newEnv, p) //iterate until fixpoint
@@ -141,24 +179,35 @@ class Analysis3 {
     case Assignment(l, r) =>
       val (v, newEnv) = env.lookup(r)
       newEnv.store(l, v)
+    case OpStatement(l, a, b) =>
+      val (va, newEnv) = env.lookup(a)
+      val (vb, newEnv2) = newEnv.lookup(a)
+      newEnv2.store(l, va ++ vb)
     case PrimAssignment(l) =>
       env.store(l, Set(PrimitiveValue))
     case ConstAssignment(v, s) =>
       env.store(v, Set(new Constant(s)))
     case Call(v, v0, vthis, vargs) =>
-      val (receiver, newEnv) = env.lookup(v0)
+      val (receiver, env1) = env.lookup(v0)
+      val (othis, env2) = env1.lookup(vthis)
+      var enva = env2
+      val oargs = for (varg <- vargs) yield {
+        val (oarg, _env) = enva.lookup(varg)
+        enva = _env
+        oarg
+      }
       assert3(!(receiver contains requireObject), "call to require function found with arguments " + lookupArgs(env, vargs) + " -- " + receiver)
-      assert3(!receiver.exists(_.isUnknown), "call to unknown value found")
-      newEnv
+      //      assert3(!receiver.exists(_.isUnknown), "call to unknown value found")
+      enva.store(v, Set(new MethodReturnValue(receiver, othis, oargs)))
     case f: FunDecl =>
       env.store(f.v, Set(new Fun(f)))
     case Store(v1, f, v2) =>
       val (receiver, newEnv) = env.lookup(v1)
-      receiver.foreach(v => assert3(!v.isUnknown, s"store to field unknown object found ($v.$f)"))
+//      receiver.foreach(v => assert3(!v.isUnknown, s"store to field unknown object found ($v.$f)"))
       val (value, newEnv2) = newEnv.lookup(v2)
       newEnv2.storeField(v1, f, value)
-    case Load(v1, v2, f) =>
-      val (value, newEnv) = env.lookupField(v2, f)
+    case p@Load(v1, v2, f) =>
+      val (value, newEnv) = env.lookupField(v2, f, p)
       newEnv.store(v1, value)
     case Constructor(v, clsNameVar, params) =>
       //TODO prototype

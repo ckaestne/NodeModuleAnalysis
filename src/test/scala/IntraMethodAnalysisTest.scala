@@ -6,14 +6,14 @@ import org.scalatest.FunSuite
 /**
   * Created by ckaestne on 11/24/16.
   */
-class Analysis3Test extends FunSuite {
+class IntraMethodAnalysisTest extends FunSuite {
 
   test("direct call") {
     reject("require('foo');")
   }
 
   test("unknown call") {
-    reject("bar('foo');")
+    pass("bar('foo');")
   }
 
   test("no call") {
@@ -51,7 +51,7 @@ class Analysis3Test extends FunSuite {
       """
         |var x, foo;
         |if (x)
-        | y = foo;
+        | y = require;
         |y();
       """.stripMargin
     )
@@ -85,7 +85,7 @@ class Analysis3Test extends FunSuite {
     )
   }
 
-  test("if loop") {
+  test("loop") {
     reject(
       """
         |var x, y, foo;
@@ -102,7 +102,7 @@ class Analysis3Test extends FunSuite {
         |y();
       """.stripMargin
     )
-    pass(
+    reject(
       """
         |var x, y, foo;
         |y = require;
@@ -122,6 +122,27 @@ class Analysis3Test extends FunSuite {
         |z();
       """.stripMargin
     )
+    reject(
+      """
+        |var x={}, y, z;
+        |x.x.x.x.x = require;
+        |while (3) {
+        | x=x.x;
+        |}
+        |x();
+      """.stripMargin
+    )
+  }
+
+  test("infinite loop") {
+    pass(
+      """
+        |var x, y={};
+        |while (x)
+        | y = y.bar;
+        |y();
+      """.stripMargin
+    )
   }
 
   test("fields") {
@@ -132,7 +153,7 @@ class Analysis3Test extends FunSuite {
         |x.foo();
       """.stripMargin
     )
-    reject(
+    pass(
       """
         |var x = {};
         |x.foo();

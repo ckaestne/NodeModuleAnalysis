@@ -30,6 +30,11 @@ trait Statement {
 
   def ++(s: Sequence) = Sequence(this :: s.s)
 
+  override def equals(o: scala.Any): Boolean = o match {
+    case that: Statement => this eq that
+    case _ => false
+  }
+
 }
 
 case class Sequence(s: List[Statement]) extends Statement {
