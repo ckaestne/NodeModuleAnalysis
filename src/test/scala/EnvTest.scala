@@ -7,7 +7,7 @@ import org.scalatest.FunSuite
   */
 class EnvTest extends FunSuite {
 
-  val a = new Analysis3
+  val a = new IntraMethodAnalysis
 
   val emptyEnv = Env(Map(), Map(), Map(), new Obj())
 

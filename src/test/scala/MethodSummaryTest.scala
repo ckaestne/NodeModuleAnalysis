@@ -50,7 +50,7 @@ class MethodSummaryTest extends FunSuite {
   }
 
 
-  val analysis3 = new Analysis3()
+  val analysis3 = new IntraMethodAnalysis()
 
   def reject(prog: String): Unit = {
     //TODO do nothing for now
