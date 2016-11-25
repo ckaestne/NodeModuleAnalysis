@@ -9,7 +9,7 @@ class EnvTest extends FunSuite {
 
   val a = new Analysis3
 
-  val emptyEnv = a.Env(Map(), Map(), new a.Obj(), None)
+  val emptyEnv = a.Env(Map(), Map(), Map())
 
   test("Env") {
 
@@ -19,7 +19,7 @@ class EnvTest extends FunSuite {
     val o3 = new a.Obj("o3")
     val x = emptyEnv.store(v, Set(o1))
     val y = emptyEnv.store(v, Set(o2))
-    val l = Load(v, v, "foo")
+    val l = Some(Load(v, v, "foo"))
 
     assert(x.union(y).lookup(v)._1 == Set(o1, o2))
 

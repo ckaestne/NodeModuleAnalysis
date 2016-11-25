@@ -59,14 +59,14 @@ class MethodSummaryTest extends FunSuite {
   def pass(prog: String): Unit = {
     val vm = parse(prog).toVM()
     printProg(vm)
-    val env = analysis3.analyze(vm)
+    val env = analysis3.analyzeScript(vm)
     printEnv(env)
   }
 
   def passFile(file: String): Unit = {
     val vm = parseFile(file).toVM()
     printProg(vm)
-    analysis3.analyze(vm)
+    analysis3.analyzeScript(vm)
   }
 
   def parse(prog: String) = {

@@ -73,7 +73,7 @@ class ParserTest extends FunSuite {
 //    assert(result.isEmpty, result.mkString("\n"))
     prog.toVM().asInstanceOf[Sequence].s.reverse.foreach(println)
     println("#############")
-    new Analysis3().analyze(prog.toVM())
+    new Analysis3().analyzeScript(prog.toVM())
 //    println(prog.toVM())
 
 //    val env = Env.empty

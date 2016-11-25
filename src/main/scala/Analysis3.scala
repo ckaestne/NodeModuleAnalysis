@@ -19,6 +19,8 @@ class Analysis3 {
     override def toString: String = _name
   }
 
+  class Param(paramName: String) extends Obj("param-" + paramName)
+
   class Fun(f: FunDecl, _name: String = NameHelper.genFunctionName) extends Obj(_name)
 
   class UnknownValue(_name: String = "unknown-" + NameHelper.genObjectName) extends Obj(_name) {
@@ -29,7 +31,7 @@ class Analysis3 {
     override def toString: String = "ret-" + super.toString
   }
 
-  class UnknownLoadValue(val stmt: Load) extends UnknownValue
+  class UnknownLoadValue(val stmt: Option[Load]) extends UnknownValue
 
 
   private def freshObject = new Obj()
@@ -39,23 +41,29 @@ class Analysis3 {
     case _ => new UnknownValue()
   }
 
-  private def freshUnknownLoadObject(stmt: Load) = new UnknownLoadValue(stmt)
 
   val requireObject = new Obj("obj-require")
   val moduleObject = new Obj("obj-module")
   val exportsObject = new Obj("obj-exports")
 
 
-  case class Env(store: Map[Variable, Set[Value]], members: Map[Obj, Map[String, Set[Value]]], thisObj: Obj, outerEnv: Option[Env]) {
+  type Field = String
+
+  case class Env(
+                  store: Map[Variable, Set[Value]],
+                  members: Map[Obj, Map[Field, Set[Value]]],
+                  calls: Map[Call, Set[List[Value]]]
+                ) {
 
     def lookupOpt(name: Variable): Option[Set[Value]] = store.get(name)
+
 
     def lookup(name: Variable): (Set[Value], Env) = {
       val r = lookupOpt(name)
       if (r.isDefined) (r.get, this)
       else {
-        val obj = Set[Value](freshUnknownObject(name))
-        (obj, this.store(name, obj))
+        assert(name.isInstanceOf[NamedVariable])
+        this.lookupField(scopeVariable, name.asInstanceOf[NamedVariable].name, None)
       }
     }
 
@@ -80,7 +88,7 @@ class Analysis3 {
       this.copy(members = members + (o -> (omembers + (f -> values))))
     }
 
-    def lookupField(v: Variable, f: String, loadStmt: Load): (Set[Value], Env) = {
+    def lookupField(v: Variable, f: String, loadStmt: Option[Load]): (Set[Value], Env) = {
       //a little complicated, because we want to reflect every read as a change
       //to the environment, such that the next read will produce the same
       //unknown object
@@ -108,24 +116,26 @@ class Analysis3 {
       (result, env)
     }
 
-    private def createTargetObj(o: Obj, loadStmt: Load): Obj = {
-      //search for objects that point to this object; if any of those are unknown objects
-      //from the same load instruction, we have found a cycle; return that object instead
+    private def createTargetObj(o: Obj, loadStmt: Option[Load]): Obj = {
+      if (loadStmt.isDefined) {
+        //search for objects that point to this object; if any of those are unknown objects
+        //from the same load instruction, we have found a cycle; return that object instead
 
-      var todo: List[Obj] = o :: Nil
-      var done: Set[Obj] = Set()
-      while (todo.nonEmpty) {
-        var obj = todo.head
-        obj match {
-          case a: UnknownLoadValue if a.stmt == loadStmt => return obj
-          case _ =>
+        var todo: List[Obj] = o :: Nil
+        var done: Set[Obj] = Set()
+        while (todo.nonEmpty) {
+          var obj = todo.head
+          obj match {
+            case a: UnknownLoadValue if a.stmt == loadStmt => return obj
+            case _ =>
+          }
+          todo = todo.tail
+          done += obj
+          val directBases = findDirectBases(o)
+          todo = (directBases -- done).toList ++ todo
         }
-        todo = todo.tail
-        done += obj
-        val directBases = findDirectBases(o)
-        todo = (directBases -- done).toList ++ todo
       }
-      return freshUnknownLoadObject(loadStmt)
+      return new UnknownLoadValue(loadStmt)
     }
 
     //find any object with a field pointing to o
@@ -133,10 +143,10 @@ class Analysis3 {
 
 
     def union(that: Env): Env = {
-      assert(this.outerEnv == that.outerEnv, "outerEnv changed in branch; this is unexpected")
-      assert(this.thisObj == that.thisObj, "thisObj changed in branch; this is unexpected")
       Env(relUnion(this.store, that.store, () => Set()),
-        rel3Union(this.members, that.members, () => Set()), thisObj, outerEnv)
+        rel3Union(this.members, that.members, () => Set()),
+        relUnion(this.calls, that.calls, () => Set())
+      )
     }
 
     private def relUnion[A, B](a: Map[A, Set[B]], b: Map[A, Set[B]], emptySet: () => Set[B]): Map[A, Set[B]] = {
@@ -149,15 +159,21 @@ class Analysis3 {
 
   }
 
+  val scopeValue: Value = new Param("$scope")
+  val scopeVariable = NamedVariable("$scope")
 
-  def analyze(p: Statement): Env = {
-    val thisObj = freshObject
-    var globalEnv = Env(Map(), Map(), thisObj, None)
-    globalEnv = globalEnv.store(NamedVariable("require"), Set(requireObject))
-    globalEnv = globalEnv.store(NamedVariable("module"), Set(moduleObject))
-    globalEnv = globalEnv.store(NamedVariable("exports"), Set(exportsObject))
-    globalEnv = globalEnv.storeField(moduleObject, "exports", Set[Value](exportsObject))
-    analyze(globalEnv, p)
+  def analyzeScript(p: Statement): Env = {
+    analyze(new FunDecl(new AnonymousVariable(), List(
+      NamedVariable("module"), NamedVariable("require"), NamedVariable("exports")
+    ), p))
+  }
+
+  def analyze(fun: FunDecl): Env = {
+    val store: Map[Variable, Set[Value]] = Map[Variable, Set[Value]]() ++
+      fun.args.map(a => (a, Set[Value](new Param(a.name)))) +
+      (scopeVariable -> Set(scopeValue))
+    var env = Env(store, Map(), Map())
+    analyze(env, fun.body)
   }
 
   private def analyze(env: Env, p: Statement): Env = p match {
@@ -212,7 +228,7 @@ class Analysis3 {
       val (value, newEnv2) = newEnv.lookup(v2)
       newEnv2.storeField(v1, f, value)
     case p@Load(v1, v2, f) =>
-      val (value, newEnv) = env.lookupField(v2, f, p)
+      val (value, newEnv) = env.lookupField(v2, f, Some(p))
       newEnv.store(v1, value)
     case Constructor(v, clsNameVar, params) =>
       //TODO prototype
