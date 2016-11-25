@@ -21,13 +21,11 @@ class Analysis3 {
 
   class Fun(f: FunDecl, _name: String = NameHelper.genFunctionName) extends Obj(_name)
 
-  class UnknownValue extends Obj {
+  class UnknownValue(_name: String = "unknown-" + NameHelper.genObjectName) extends Obj(_name) {
     override def isUnknown: Boolean = true
-
-    override def toString: String = "unknown-" + super.toString
   }
 
-  class MethodReturnValue(target: Set[Value], thisObj: Set[Value], args: List[Set[Value]]) extends UnknownValue {
+  case class MethodReturnValue(target: Set[Value], thisObj: Set[Value], args: List[Set[Value]]) extends UnknownValue {
     override def toString: String = "ret-" + super.toString
   }
 
@@ -36,7 +34,10 @@ class Analysis3 {
 
   private def freshObject = new Obj()
 
-  private def freshUnknownObject = new UnknownValue()
+  private def freshUnknownObject(v: Variable) = v match {
+    case NamedVariable(name) => new UnknownValue("unknown-" + name)
+    case _ => new UnknownValue()
+  }
 
   private def freshUnknownLoadObject(stmt: Load) = new UnknownLoadValue(stmt)
 
@@ -53,7 +54,7 @@ class Analysis3 {
       val r = lookupOpt(name)
       if (r.isDefined) (r.get, this)
       else {
-        val obj = Set[Value](freshUnknownObject)
+        val obj = Set[Value](freshUnknownObject(name))
         (obj, this.store(name, obj))
       }
     }
@@ -179,6 +180,10 @@ class Analysis3 {
     case Assignment(l, r) =>
       val (v, newEnv) = env.lookup(r)
       newEnv.store(l, v)
+    case Return(l) =>
+      //same as assignment to a special "$return" variable
+      val (v, newEnv) = env.lookup(l)
+      newEnv.store(NamedVariable("$return"), v)
     case OpStatement(l, a, b) =>
       val (va, newEnv) = env.lookup(a)
       val (vb, newEnv2) = newEnv.lookup(a)
@@ -203,7 +208,7 @@ class Analysis3 {
       env.store(f.v, Set(new Fun(f)))
     case Store(v1, f, v2) =>
       val (receiver, newEnv) = env.lookup(v1)
-//      receiver.foreach(v => assert3(!v.isUnknown, s"store to field unknown object found ($v.$f)"))
+      //      receiver.foreach(v => assert3(!v.isUnknown, s"store to field unknown object found ($v.$f)"))
       val (value, newEnv2) = newEnv.lookup(v2)
       newEnv2.storeField(v1, f, value)
     case p@Load(v1, v2, f) =>

@@ -28,6 +28,20 @@ class MethodSummaryTest extends FunSuite {
       """.stripMargin)
   }
 
+  test("summary1") {
+    pass(
+      """
+        |var z = {};
+        |a=bar();
+        |z.z=3;
+        |var x = foo.bar;
+        |var y = x()(z.z);
+        |return y;
+      """.
+        stripMargin
+    )
+  }
+
 
 
 
@@ -107,8 +121,55 @@ class MethodSummaryTest extends FunSuite {
 
 
   def printEnv(env: analysis3.Env): Unit = {
-println("### Env: ")
+    import analysis3._
+    println("### Env: ")
     println(env)
+
+    val ret = NamedVariable("$return")
+    val retObjs = env.lookup(ret)._1
+
+    var printed: Set[Value] = Set()
+
+    def printValue(v: Value): Unit = if (!(printed contains v)) {
+      printed += v
+      v match {
+        case callret: MethodReturnValue =>
+          printObj(callret)
+          println("\t\"" + callret + "\" [ style=bold ]")
+          callret.target.foreach(t => println("\t\"" + callret + "\" -> \"" + t + "\" [ label = \"call-target\", style=dotted  ];"))
+          //          callret.thisObj.foreach(t => println("\t\"" + callret + "\" -> \"" + t + "\" [ label = \"call-this\", style=dotted  ];"))
+          for ((args, idx) <- callret.args.zipWithIndex; arg <- args)
+            println("\t\"" + callret + "\" -> \"" + arg + "\" [ label = \"call-arg" + (idx + 1) + "\", style=dotted  ];")
+          (callret.target ++ /*callret.thisObj++*/ callret.args.flatten).foreach(printValue)
+        case obj: Obj =>
+          printObj(obj)
+        case _ =>
+      }
+    }
+    def printObj(obj: Obj): Unit = {
+      //fields (writes)
+      val fields = env.members.getOrElse(obj, Map())
+      for ((field, fieldValues) <- fields;
+           fieldValue <- fieldValues) {
+        println("\t\"" + obj + "\" -> \"" + fieldValue + "\" [ label = \"" + field + "\", style=dashed  ];")
+        printValue(fieldValue)
+      }
+      //reverse lookup (reads)
+      for ((sourceObj, fields) <- env.members.mapValues(_.filter(_._2 contains obj).keySet).filter(_._2.nonEmpty);
+           field <- fields)
+        println("\t\"" + sourceObj + "\" -> \"" + obj + "\" [ label = \"" + field + "\", style=dashed  ];")
+    }
+
+    println("digraph G {")
+
+    println("\t\"" + ret + "\" [ style=filled ]")
+    for (retObj <- retObjs) {
+      println("\t\"" + ret + "\" -> \"" + retObj + "\"")
+      printValue(retObj)
+    }
+
+
+    println("}")
 
   }
 
