@@ -24,7 +24,9 @@ case class WhileStmt(expr: Expr, body: Stmt) extends Stmt {
 }
 
 case class IfStmt(expr: Expr, t: Stmt, e: Option[Stmt]) extends Stmt {
-  def toVM(): Statement = e.map(_.toVM()).getOrElse(emptyStatement) ++ t.toVM() ++ expr.toVM._1
+  def toVM(): Statement =
+    ConditionalStatement(e.map(s => s.toVM()).getOrElse(emptyStatement), t.toVM()) ++
+      expr.toVM._1
 }
 
 
@@ -41,7 +43,17 @@ case class ReturnStmt(expr: Option[Expr]) extends Stmt {
 }
 
 case class CompoundStmt(inner: List[Stmt]) extends Stmt {
-  def toVM(): Statement = inner.map(_.toVM).reverse.fold(emptyStatement)(_ ++ _)
+  def toVM(): Statement =
+    inner.map(_.toVM).reverse.fold(emptyStatement)(_ ++ _) ++
+      inner.map(findVars).fold(emptyStatement)(_ ++ _)
+
+  private def findVars(s: Stmt): Statement = s match {
+    case VarStmt(vars) => vars.map(v => PrimAssignment(new NamedVariable(v.name.a))).fold(emptyStatement)(_ ++ _)
+    case CompoundStmt(inner) => inner.map(findVars).fold(emptyStatement)(_ ++ _)
+    case IfStmt(_, t, e) => findVars(t) ++ e.map(findVars).getOrElse(emptyStatement)
+    case WhileStmt(_, b) => findVars(b)
+    case _ => emptyStatement
+  }
 }
 
 case class VarStmt(vars: List[VarDef]) extends Stmt {
@@ -111,7 +123,7 @@ case class ITEExpr(i: Expr, t: Expr, e: Expr) extends Expr {
     val (st, vt) = t.toVM
     val (se, ve) = e.toVM
     val r = freshVar
-    (OpStatement(r, vt, ve) ++ se ++ st ++ si, r)
+    (ConditionalStatement(Assignment(r, ve) ++ se, Assignment(r, vt) ++ st) ++ si, r)
   }
 
 
@@ -169,7 +181,7 @@ case class FunExpr(name: Option[Id], param: List[Id], body: Stmt) extends Expr {
 case class Lit(a: String) extends Expr {
   def toVM: (Statement, Variable) = {
     val r = freshVar
-    (PrimAssignment(r), r)
+    (ConstAssignment(r, a), r)
   }
 }
 
