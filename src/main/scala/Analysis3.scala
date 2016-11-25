@@ -3,35 +3,38 @@ package edu.cmu.cs.nodesec
 /**
   * Created by ckaestne on 11/24/16.
   */
+
+
+sealed trait Value {
+  def isUnknown: Boolean = false
+}
+
+case class Constant(s: String) extends Obj
+
+//primitive values include all nonobjects, including "undefined"
+object PrimitiveValue extends Value
+
+class Obj(_name: String = NameHelper.genObjectName) extends Value {
+  //name is for debugging only
+  override def toString: String = _name
+}
+
+case class Param(paramName: String) extends Obj("param-" + paramName)
+
+class Fun(f: FunDecl, _name: String = NameHelper.genFunctionName) extends Obj(_name)
+
+class UnknownValue(_name: String = "unknown-" + NameHelper.genObjectName) extends Obj(_name) {
+  override def isUnknown: Boolean = true
+}
+
+case class MethodReturnValue(target: Set[Value], thisObj: Set[Value], args: List[Set[Value]]) extends UnknownValue {
+  override def toString: String = "ret-" + super.toString
+}
+
+class UnknownLoadValue(val stmt: Option[Load]) extends UnknownValue
+
+
 class Analysis3 {
-
-  sealed trait Value {
-    def isUnknown: Boolean = false
-  }
-
-  case class Constant(s: String) extends Obj
-
-  //primitive values include all nonobjects, including "undefined"
-  object PrimitiveValue extends Value
-
-  class Obj(_name: String = NameHelper.genObjectName) extends Value {
-    //name is for debugging only
-    override def toString: String = _name
-  }
-
-  class Param(paramName: String) extends Obj("param-" + paramName)
-
-  class Fun(f: FunDecl, _name: String = NameHelper.genFunctionName) extends Obj(_name)
-
-  class UnknownValue(_name: String = "unknown-" + NameHelper.genObjectName) extends Obj(_name) {
-    override def isUnknown: Boolean = true
-  }
-
-  case class MethodReturnValue(target: Set[Value], thisObj: Set[Value], args: List[Set[Value]]) extends UnknownValue {
-    override def toString: String = "ret-" + super.toString
-  }
-
-  class UnknownLoadValue(val stmt: Option[Load]) extends UnknownValue
 
 
   private def freshObject = new Obj()
@@ -42,18 +45,14 @@ class Analysis3 {
   }
 
 
-  val requireObject = new Obj("obj-require")
-  val moduleObject = new Obj("obj-module")
-  val exportsObject = new Obj("obj-exports")
-
-
   type Field = String
 
   case class Env(
                   store: Map[Variable, Set[Value]],
                   members: Map[Obj, Map[Field, Set[Value]]],
-                  calls: Map[Call, Set[List[Value]]]
+                  calls: Map[Call, Set[List[Set[Value]]]]
                 ) {
+
 
     def lookupOpt(name: Variable): Option[Set[Value]] = store.get(name)
 
@@ -157,6 +156,10 @@ class Analysis3 {
       ((a.keySet ++ b.keySet) map { k => k -> relUnion(a.getOrElse(k, Map.empty), b.getOrElse(k, Map.empty), emptySet) }).toMap
     }
 
+
+    def addCall(c: Call, values: List[Set[Value]]): Env =
+      this.copy(calls = calls + (c -> (calls.getOrElse(c, Set()) + values)))
+
   }
 
   val scopeValue: Value = new Param("$scope")
@@ -208,7 +211,7 @@ class Analysis3 {
       env.store(l, Set(PrimitiveValue))
     case ConstAssignment(v, s) =>
       env.store(v, Set(new Constant(s)))
-    case Call(v, v0, vthis, vargs) =>
+    case c@Call(v, v0, vthis, vargs) =>
       val (receiver, env1) = env.lookup(v0)
       val (othis, env2) = env1.lookup(vthis)
       var enva = env2
@@ -217,9 +220,9 @@ class Analysis3 {
         enva = _env
         oarg
       }
-      assert3(!(receiver contains requireObject), "call to require function found with arguments " + lookupArgs(env, vargs) + " -- " + receiver)
+      //      assert3(!(receiver contains requireObject), "call to require function found with arguments " + lookupArgs(env, vargs) + " -- " + receiver)
       //      assert3(!receiver.exists(_.isUnknown), "call to unknown value found")
-      enva.store(v, Set(new MethodReturnValue(receiver, othis, oargs)))
+      enva.store(v, Set(new MethodReturnValue(receiver, othis, oargs))).addCall(c, receiver :: othis :: oargs)
     case f: FunDecl =>
       env.store(f.v, Set(new Fun(f)))
     case Store(v1, f, v2) =>

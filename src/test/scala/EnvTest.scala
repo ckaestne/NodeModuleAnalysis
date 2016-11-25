@@ -14,24 +14,22 @@ class EnvTest extends FunSuite {
   test("Env") {
 
     val v = new NamedVariable("v")
-    val o1 = new a.Obj("o1")
-    val o2 = new a.Obj("o2")
-    val o3 = new a.Obj("o3")
+    val o1 = new Obj("o1")
+    val o2 = new Obj("o2")
+    val o3 = new Obj("o3")
     val x = emptyEnv.store(v, Set(o1))
     val y = emptyEnv.store(v, Set(o2))
     val l = Some(Load(v, v, "foo"))
 
     assert(x.union(y).lookup(v)._1 == Set(o1, o2))
 
-    assert(x.union(emptyEnv).lookup(v)._1.contains(o1))
-    assert(x.union(emptyEnv).lookup(v)._1.exists(_.isUnknown))
+    assert(x.union(emptyEnv).lookup(v)._1 == Set(o1))
 
-    val xy = x.storeField(v, "foo", Set[a.Value](o2))
-    val xz = x.storeField(v, "foo", Set[a.Value](o3))
+    val xy = x.storeField(v, "foo", Set[Value](o2))
+    val xz = x.storeField(v, "foo", Set[Value](o3))
     assert(xy.union(xz).lookupField(v, "foo", l)._1 == Set(o3, o2))
 
-    assert(xy.union(x).lookupField(v, "foo", l)._1.contains(o2))
-    assert(xy.union(x).lookupField(v, "foo", l)._1.exists(_.isUnknown))
+    assert(xy.union(x).lookupField(v, "foo", l)._1==Set(o2))
 
 
   }

@@ -194,7 +194,7 @@ class IntraMethodAnalysisTest extends FunSuite {
     val vm = parse(prog).toVM()
     printProg(vm)
     try {
-      new Analysis3().analyzeScript(vm)
+      checkPolicy(new Analysis3().analyzeScript(vm))
       fail("expected to reject program, but passed")
     } catch {
       case e: Analysis3Exception =>
@@ -205,13 +205,22 @@ class IntraMethodAnalysisTest extends FunSuite {
   def pass(prog: String): Unit = {
     val vm = parse(prog).toVM()
     printProg(vm)
-    new Analysis3().analyzeScript(vm)
+    checkPolicy(new Analysis3().analyzeScript(vm))
   }
+
 
   def passFile(file: String): Unit = {
     val vm = parseFile(file).toVM()
     printProg(vm)
-    new Analysis3().analyzeScript(vm)
+    checkPolicy(new Analysis3().analyzeScript(vm))
+  }
+
+  def checkPolicy(env: Analysis3#Env): Unit = {
+    for ((call, paramset) <- env.calls;
+         params <- paramset;
+         target <- params.head)
+      if (target == Param("require"))
+        throw new Analysis3Exception("call to require function found -- " + call)
   }
 
   def parse(prog: String) = {
@@ -219,6 +228,7 @@ class IntraMethodAnalysisTest extends FunSuite {
     if (!parsed.successful) println(parsed)
     parsed.get
   }
+
   def parseFile(file: String) = {
     val parsed = p.parseAll(p.Program, getSource(file))
     if (!parsed.successful) println(parsed)
