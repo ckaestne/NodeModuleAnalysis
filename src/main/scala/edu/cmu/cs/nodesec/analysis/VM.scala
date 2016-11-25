@@ -1,4 +1,4 @@
-package edu.cmu.cs.nodesec
+package edu.cmu.cs.nodesec.analysis
 
 object VariableHelper {
   def freshVar = new AnonymousVariable()

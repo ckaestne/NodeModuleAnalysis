@@ -1,5 +1,7 @@
 package edu.cmu.cs.nodesec
 
+import edu.cmu.cs.nodesec.analysis._
+import edu.cmu.cs.nodesec.parser.JSParser
 import org.scalatest.FunSuite
 
 

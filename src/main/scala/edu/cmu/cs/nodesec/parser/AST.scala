@@ -1,6 +1,7 @@
-package edu.cmu.cs.nodesec
+package edu.cmu.cs.nodesec.parser
 
-import VariableHelper._
+import edu.cmu.cs.nodesec.analysis.VariableHelper._
+import edu.cmu.cs.nodesec.analysis._
 
 sealed trait AST extends Product {
   override def equals(that: Any) = that match {

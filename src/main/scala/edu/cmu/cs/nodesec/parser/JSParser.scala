@@ -1,4 +1,4 @@
-package edu.cmu.cs.nodesec
+package edu.cmu.cs.nodesec.parser
 
 import scala.util.parsing.combinator._
 

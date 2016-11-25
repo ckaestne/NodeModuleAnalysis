@@ -1,5 +1,6 @@
 package edu.cmu.cs.nodesec
 
+import edu.cmu.cs.nodesec.analysis._
 import org.scalatest.FunSuite
 
 /**

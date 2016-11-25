@@ -1,5 +1,7 @@
 package edu.cmu.cs.nodesec
 
+import edu.cmu.cs.nodesec.analysis._
+import edu.cmu.cs.nodesec.parser.JSParser
 import org.scalatest.FunSuite
 
 
@@ -48,6 +50,19 @@ class MethodCompositionTest extends FunSuite {
         |function f(x) { function g(x) { return x; }; return g(x); };
         |var  x=f(require);
         |x();
+      """.stripMargin
+    )
+  }
+
+
+  test("fun arg") {
+    reject(
+      """
+        |function f(x) { return x; };
+        |function g(x) { return x; };
+        |var x=f(g);
+        |var y=x(require);
+        |y();
       """.stripMargin
     )
   }
