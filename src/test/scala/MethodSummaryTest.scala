@@ -120,8 +120,7 @@ class MethodSummaryTest extends FunSuite {
   }
 
 
-  def printEnv(env: analysis3.Env): Unit = {
-    import analysis3._
+  def printEnv(env: Env): Unit = {
     println("### Env: ")
     println(env)
 
@@ -156,8 +155,10 @@ class MethodSummaryTest extends FunSuite {
       }
       //reverse lookup (reads)
       for ((sourceObj, fields) <- env.members.mapValues(_.filter(_._2 contains obj).keySet).filter(_._2.nonEmpty);
-           field <- fields)
-        println("\t\"" + sourceObj + "\" -> \"" + obj + "\" [ label = \"" + field + "\", style=dashed  ];")
+           field <- fields) {
+        //        println("\t\"" + sourceObj + "\" -> \"" + obj + "\" [ label = \"" + field + "\", style=dashed  ];")
+        printValue(sourceObj)
+      }
     }
 
     println("digraph G {")

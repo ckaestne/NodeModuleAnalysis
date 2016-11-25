@@ -215,7 +215,7 @@ class IntraMethodAnalysisTest extends FunSuite {
     checkPolicy(new Analysis3().analyzeScript(vm))
   }
 
-  def checkPolicy(env: Analysis3#Env): Unit = {
+  def checkPolicy(env: Env): Unit = {
     for ((call, paramset) <- env.calls;
          params <- paramset;
          target <- params.head)

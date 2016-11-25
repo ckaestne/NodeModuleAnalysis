@@ -9,7 +9,7 @@ class EnvTest extends FunSuite {
 
   val a = new Analysis3
 
-  val emptyEnv = a.Env(Map(), Map(), Map())
+  val emptyEnv = Env(Map(), Map(), Map(), new Obj())
 
   test("Env") {
 
