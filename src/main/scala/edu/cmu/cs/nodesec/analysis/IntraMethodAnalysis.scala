@@ -43,7 +43,7 @@ class IntraMethodAnalysis {
       (params ++ locals).toMap + (returnVariable -> Set(PrimitiveValue))
     val members: Map[Obj, Map[String, Set[Value]]] =
       Map(localScopeObj -> (params ++ locals).map(a => (a._1.name, a._2)).toMap)
-    val env = Env(store, members, Map(), Set(), localScopeObj, closureScopeObj)
+    val env = Env.empty.copy(store = store, members = members, localScopeObj = localScopeObj, closureObj = closureScopeObj)
     analyze(env, fun.body)
   }
 

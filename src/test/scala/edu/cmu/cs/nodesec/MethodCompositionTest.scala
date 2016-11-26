@@ -11,13 +11,15 @@ import org.scalatest.FunSuite
 class MethodCompositionTest extends FunSuite {
 
 
+  import MethodCompositionAnalysis._
+
   test("return and closure") {
     reject(
       """
         |function f() { return require; };
         |var x=f();
         |x();
-      """.stripMargin
+      """.stripMargin, noCallToRequire
     )
   }
 
@@ -30,7 +32,7 @@ class MethodCompositionTest extends FunSuite {
         | return r; };
         |var x=f();
         |x.a();
-      """.stripMargin
+      """.stripMargin, noCallToRequire
     )
   }
 
@@ -40,7 +42,7 @@ class MethodCompositionTest extends FunSuite {
         |function f(x) { return x; };
         |var  x=f(require);
         |x();
-      """.stripMargin
+      """.stripMargin, noCallToRequire
     )
   }
 
@@ -50,7 +52,7 @@ class MethodCompositionTest extends FunSuite {
         |function f(x) { function g(x) { return x; }; return g(x); };
         |var  x=f(require);
         |x();
-      """.stripMargin
+      """.stripMargin, noCallToRequire
     )
   }
 
@@ -63,7 +65,7 @@ class MethodCompositionTest extends FunSuite {
         |var x=f(g);
         |var y=x(require);
         |y();
-      """.stripMargin
+      """.stripMargin, noCallToRequire
     )
   }
 
@@ -74,18 +76,18 @@ class MethodCompositionTest extends FunSuite {
         |var x=f(require);
         |var y=f(f);
         |y(3);
-      """.stripMargin
+      """.stripMargin, noCallToRequire
     )
   }
 
 
   test("leftpad") {
-    passFile("src/test/resources/leftpad.js")
+    passFile("src/test/resources/leftpad.js", noCallToRequire)
   }
 
   test("closure") {
-    reject("(function foo() { require(); })();")
-    reject("function foo() { require(); };")
+    reject("(function foo() { require(); })();", noCallToRequire)
+    reject("function foo() { require(); };", noCallToRequire)
   }
 
   test("closure with variables") {
@@ -97,7 +99,7 @@ class MethodCompositionTest extends FunSuite {
         | x();
         |}
         |foo();
-      """.stripMargin)
+      """.stripMargin, noCallToRequire)
   }
 
 
@@ -111,7 +113,7 @@ class MethodCompositionTest extends FunSuite {
         | x();
         |}
         |foo();
-      """.stripMargin)
+      """.stripMargin, noCallToRequire)
   }
 
   test("writing to closure") {
@@ -124,7 +126,7 @@ class MethodCompositionTest extends FunSuite {
         |}
         |foo();
         |x();
-      """.stripMargin)
+      """.stripMargin, noCallToRequire)
     reject(
       """
         |var x = function bar(){};;
@@ -133,31 +135,68 @@ class MethodCompositionTest extends FunSuite {
         |}
         |foo();
         |x();
-      """.stripMargin)
+      """.stripMargin, noCallToRequire)
   }
 
-  import MethodCompositionAnalysis._
+  ///////////////////////////////////////////////
+  // policy: no write to external objects
 
-  val policy = noCallToRequire
+  test("write to closure") {
+    pass("var x; x=1;", noWriteToClosure)
+    reject("x=1;", noWriteToClosure)
+    reject("x.y.z=1;", noWriteToClosure)
+    reject("var x=1; function foo() { x=2; }", noWriteToClosure)
+    reject("function foo() { x=2; }", noWriteToClosure)
+  }
 
-  def reject(prog: String): Unit = {
+  test("read from global") {
+    pass("var x=1; return x;", noReadFromGlobal)
+    reject("return x;", noReadFromGlobal)
+    reject("function foo(){return x;}", noReadFromGlobal)
+    reject("val x = 1; function foo(){return x;}", noReadFromGlobal) //analysis is fairly imprecise
+  }
+
+  test("no prototype") {
+    pass("(function(){})(); var x = {};",noPrototype)
+    reject("var x={}; x.prototype.foo=3;",noPrototype)
+    reject("function foo(){}; var x=new foo(); x.prototype.foo=3;",noPrototype)
+  }
+
+  test("forbidden global objects") {
+    pass("whatever(); require();", noForbiddenGlobalObjects)
+    reject("eval(\"foo\");", noForbiddenGlobalObjects)
+    reject("arguments(1)();", noForbiddenGlobalObjects)
+    reject("x=eval; x();", noForbiddenGlobalObjects)
+  }
+
+  test("unresolved function calls") {
+    pass("function foo(){} foo(); var x=foo; x();", noAlwaysUnresolvedFunctionCalls)
+    reject("foo();", noAlwaysUnresolvedFunctionCalls)
+    reject("require();", noAlwaysUnresolvedFunctionCalls)
+    pass("var x; if (3) x=function(){}; x();", noAlwaysUnresolvedFunctionCalls)//cannot check absence of unresolved call in some cases
+  }
+
+  def reject(prog: String, policies: Policy*): Unit = {
+    assert(policies.nonEmpty, "no policies provided")
     val vm = parse(prog)
-    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policy)
+    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policies.reduce(_ + _))
     println(policyViolations.map(_.render).mkString("\n"))
     assert(policyViolations.nonEmpty, "policy violation expected, but not found")
   }
 
-  def pass(prog: String): Unit = {
+  def pass(prog: String, policies: Policy*): Unit = {
+    assert(policies.nonEmpty, "no policies provided")
     val vm = parse(prog)
-    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policy)
-    assert(policyViolations.isEmpty, "policy violation found:\n"+policyViolations.map(_.render).mkString("\n"))
+    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policies.reduce(_ + _))
+    assert(policyViolations.isEmpty, "policy violation found:\n" + policyViolations.map(_.render).mkString("\n"))
   }
 
 
-  def passFile(file: String): Unit = {
+  def passFile(file: String, policies: Policy*): Unit = {
+    assert(policies.nonEmpty, "no policies provided")
     val vm = parseFile(file)
-    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policy)
-    assert(policyViolations.isEmpty, "policy violation found:\n"+policyViolations.map(_.render).mkString("\n"))
+    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policies.reduce(_ + _))
+    assert(policyViolations.isEmpty, "policy violation found:\n" + policyViolations.map(_.render).mkString("\n"))
   }
 
   def checkPolicy(env: Env): Unit = {
@@ -199,23 +238,23 @@ class MethodCompositionTest extends FunSuite {
       l => if (l.startsWith("#!")) "" else l
     ).mkString("\n")
 
-//  def printProg(s: Statement, indent: Int = 0): Unit = {
-//    val in = "  " * indent
-//    s match {
-//      case Sequence(inner) => inner.reverse.map(printProg(_, indent))
-//      case FunDecl(v, args, body) =>
-//        println(in + s"FunDecl $v, $args:")
-//        printProg(body, indent + 1)
-//      case ConditionalStatement(a, b) =>
-//        println(in + s"if:")
-//        printProg(a, indent + 1)
-//        println(in + "else:")
-//        printProg(b, indent + 1)
-//      case LoopStatement(a) =>
-//        println(in + s"loop:")
-//        printProg(a, indent + 1)
-//      case _ => println(in + s.toString)
-//    }
-//  }
+  //  def printProg(s: Statement, indent: Int = 0): Unit = {
+  //    val in = "  " * indent
+  //    s match {
+  //      case Sequence(inner) => inner.reverse.map(printProg(_, indent))
+  //      case FunDecl(v, args, body) =>
+  //        println(in + s"FunDecl $v, $args:")
+  //        printProg(body, indent + 1)
+  //      case ConditionalStatement(a, b) =>
+  //        println(in + s"if:")
+  //        printProg(a, indent + 1)
+  //        println(in + "else:")
+  //        printProg(b, indent + 1)
+  //      case LoopStatement(a) =>
+  //        println(in + s"loop:")
+  //        printProg(a, indent + 1)
+  //      case _ => println(in + s.toString)
+  //    }
+  //  }
 
 }

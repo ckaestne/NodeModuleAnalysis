@@ -10,6 +10,8 @@ case class Env(
                 members: Map[Obj, Map[String, Set[Value]]],
                 calls: Map[Call, Set[MethodReturnValue]],
                 functionPtrs: Set[(Obj, FunDecl)],
+                reads: Set[(Obj, String, Value)],
+                writes: Set[(Obj, String, Value)],
                 localScopeObj: Obj,
                 closureObj: Obj
               ) {
@@ -53,7 +55,10 @@ case class Env(
 
   def storeField(o: Obj, f: String, values: Set[Value]): Env = {
     val omembers = members.getOrElse(o, Map())
-    this.copy(members = members + (o -> (omembers + (f -> values))))
+    this.copy(
+      members = members + (o -> (omembers + (f -> values))),
+      writes = writes ++ values.map(v => (o, f, v)) // store every write
+    )
   }
 
   def lookupField(v: Variable, f: String, loadStmt: Option[Load]): (Set[Value], Env) = {
@@ -77,7 +82,7 @@ case class Env(
     (result, env)
   }
 
-  private def lookupFieldFromObj(o: Obj, f: String, createIfNotExists: () => Obj): (Set[Value], Env) = {
+  private def lookupFieldFromObj(o: Obj, f: String, createIfNotExists: () => Obj): (Set[Value], Env) = recordReads(o, f, {
     val newEnv = if (!members.contains(o))
       this.copy(members = members + (o -> Map(f -> Set[Value](createIfNotExists()))))
     else this
@@ -86,7 +91,11 @@ case class Env(
       val newomembers = omembers + (f -> Set[Value](createIfNotExists()))
       (newomembers(f), newEnv.copy(members = newEnv.members + (o -> newomembers)))
     } else (omembers(f), newEnv)
-  }
+  })
+
+  // record in `reads` set every time a value is read from an object
+  private def recordReads(o: Obj, f: String, read: (Set[Value], Env)): (Set[Value], Env) =
+  (read._1, read._2.copy(reads = read._2.reads ++ read._1.map(v => (o, f, v))))
 
 
   private def createTargetObj(o: Obj, loadStmt: Option[Load]): Obj = {
@@ -122,6 +131,8 @@ case class Env(
       rel3Union(this.members, that.members, () => Set()),
       relUnion(this.calls, that.calls, () => Set()),
       this.functionPtrs ++ that.functionPtrs,
+      this.reads ++ that.reads,
+      this.writes ++ that.writes,
       this.localScopeObj,
       this.closureObj
     )
@@ -144,5 +155,5 @@ case class Env(
 }
 
 object Env {
-  def empty = Env(Map(), Map(), Map(), Set(), new Obj(), new Obj())
+  def empty = Env(Map(), Map(), Map(), Set(), Set(), Set(), new Obj(), new Obj())
 }

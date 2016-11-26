@@ -68,6 +68,19 @@ case class DScope(fun: FunDecl, kind: String, scopeObj: Value) extends DRelation
 }
 
 
+case class DStore(fun: FunDecl, obj: Value, field: String, fieldValue: Value) extends DRelation(fun) {
+  def predicate = "store"
+
+  def terms = prefix + obj :: field :: prefix + fieldValue :: Nil
+}
+
+case class DLoad(fun: FunDecl, obj: Value, field: String, fieldValue: Value) extends DRelation(fun) {
+  def predicate = "load"
+
+  def terms = prefix + obj :: field :: prefix + fieldValue :: Nil
+}
+
+
 case class Expr(predicate: String, terms: String*) {
   def toDatalog(): DLExpr = new DLExpr(predicate, terms.asJava)
 }
