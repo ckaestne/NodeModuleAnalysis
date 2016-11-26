@@ -1,11 +1,25 @@
 package edu.cmu.cs.nodesec.analysis
 
+import edu.cmu.cs.nodesec.datalog._
+import za.co.wstoop.jatalog.Rule
+
 /**
   * Created by ckaestne on 11/25/16.
   */
+object MethodCompositionAnalysis {
+  type Policy = (Datalog, FunDecl) => Boolean
+
+  def composePolicy(p1: Policy, p2: Policy) = (d: Datalog, f: FunDecl) => p1(d, f) && p2(d, f)
+
+  val noCallToRequire: Policy = (d: Datalog, f: FunDecl) => {
+    d.rule(Expr("callToRequire", "A"), /*:-*/ Expr("invoke", "X", "A"), Expr("pt", "A", Integer.toHexString(f.hashCode()) + "#param-require"))
+    d.query("callToRequire", "A").isEmpty
+  }
+}
 class MethodCompositionAnalysis {
 
   import AnalysisHelper._
+  import MethodCompositionAnalysis._
 
   def collectFunDecls(s: Statement): Set[FunDecl] = s match {
     case f: FunDecl => collectFunDecls(f.body) + f
@@ -16,7 +30,8 @@ class MethodCompositionAnalysis {
   }
 
 
-  def analyzeScript(p: Statement): Env = {
+
+  def analyzeScript(p: Statement, policy: Policy): Boolean = {
     val mainFun = AnalysisHelper.wrapScript(p)
     val funDecls = collectFunDecls(mainFun)
 
@@ -28,7 +43,7 @@ class MethodCompositionAnalysis {
     println("callToRequire(A):-invoke(X,A), pt(A, " + Integer.toHexString(mainFun.hashCode()) + "#param-require).\n" +
       "callToRequire(A)?")
 
-    result
+    policy(result, mainFun)
   }
 
 
@@ -38,61 +53,60 @@ class MethodCompositionAnalysis {
     * context insensitive for now (context sensitivity through copying requires cycle detection
     * for calls among modules first)
     */
-  def compose(methodSummaries: Set[(FunDecl, Env)]): Env = {
-    var result = Env.empty
+  def compose(methodSummaries: Set[(FunDecl, Env)]): Datalog = {
 
     //    var inclusionEdges: Set[(Obj, Obj)] = Set()
 
-    println(
-      """
-        |%rules
-        |pt(A,C) :- pt(A,B), pt(B,C).
-        |pt(R,O) :- invoke(T, R), functionptr(T, F), return(F, O).
-        |pt(R,O) :- invoke(T, R), pt(T, Q), functionptr(Q, F), return(F, O).
-        |pt(A,B) :- actual(T,Z,B), functionptr(T, F), formal(F,Z,A).
-        |pt(A,B) :- actual(T,Z,B), pt(T, Q), functionptr(Q, F), formal(F,Z,A).
-        |pt(A,B) :- member(X, F, A), member(X, F, B).
-        |pt(A,B) :- member(X, F, A), member(Y, F, B), pt(X, Y).
-        |%""".stripMargin)
+    val datalog = new Datalog()
 
-    methodSummaries.map(a => summaryToDatalog(a._1, a._2) + "\n%").foreach(println)
+    datalog.rule(Expr("pt", "A", "C"), /*:-*/ Expr("pt", "A", "B"), Expr("pt", "B", "C"))
+    datalog.rule(Expr("pt", "R", "O"), /*:-*/ Expr("invoke", "T", "R"), Expr("functionptr", "T", "F"), Expr("return", "F", "O"))
+    datalog.rule(Expr("pt", "R", "O"), /*:-*/ Expr("invoke", "T", "R"), Expr("pt", "T", "Q"), Expr("functionptr", "Q", "F"), Expr("return", "F", "O"))
+    datalog.rule(Expr("pt", "A", "B"), /*:-*/ Expr("actual", "T", "Z", "B"), Expr("functionptr", "T", "F"), Expr("formal", "F", "Z", "A"))
+    datalog.rule(Expr("pt", "A", "B"), /*:-*/ Expr("actual", "T", "Z", "B"), Expr("pt", "T", "Q"), Expr("functionptr", "Q", "F"), Expr("formal", "F", "Z", "A"))
+    datalog.rule(Expr("pt", "A", "B"), /*:-*/ Expr("member", "X", "F", "A"), Expr("member", "X", "F", "B"))
+    datalog.rule(Expr("pt", "A", "B"), /*:-*/ Expr("member", "X", "F", "A"), Expr("pt", "X", "Y"), Expr("member", "Y", "F", "B"))
+
+    println(datalog.ruleStr+"%%%")
+
+    for ((method, summary) <- methodSummaries) {
+      val facts = summaryToDatalog(method, summary)
+      facts.foreach(datalog.load)
+      facts.map(println)
+      println("%")
+    }
 
 
-
-    result
+    datalog
   }
 
-  def summaryToDatalog(fun: FunDecl, env: Env): String = {
-    val prefix = Integer.toHexString(fun.hashCode()) + "#"
-    var result: List[String] = Nil
+  def summaryToDatalog(fun: FunDecl, env: Env): List[DRelation] = {
+    var result: List[DRelation] = Nil
 
-    result ::= s"fun($prefix)."
     for ((arg, idx) <- fun.args.zipWithIndex;
          obj <- env.lookup(arg)._1)
-      result ::= s"formal($prefix, ${idx + 1}, $prefix$obj)."
+      result ::= DFormal(fun, idx, obj)
 
     for (retvar <- Set(returnVariable); obj <- env.lookup(retvar)._1)
-      result ::= s"return(${prefix}, $prefix$obj)."
+      result ::= DReturn(fun, obj)
 
     for ((obj, children) <- env.members;
          (field, fieldvalues) <- children;
          fieldvalue <- fieldvalues)
-      result ::= s"member(${prefix}$obj, $field, $prefix$fieldvalue)."
+      result ::= DMember(fun, obj, field, fieldvalue)
 
     for ((call, retVals) <- env.calls;
          retVal <- retVals;
          target <- retVal.target) {
-      result ::= s"invoke($prefix$target, $prefix$retVal)."
+      result ::= DInvoke(fun, target, retVal)
       for ((argSet, idx) <- retVal.args.zipWithIndex; arg <- argSet)
-        result ::= s"actual($prefix$target, ${idx + 1}, $prefix$arg)."
+        result ::= DActual(fun, target, idx, arg)
     }
 
-    for ((obj, fun) <- env.functionPtrs)
-      result ::= s"functionptr($prefix$obj, ${Integer.toHexString(fun.hashCode())}#)."
+    for ((obj, targetFun) <- env.functionPtrs)
+      result ::= DFunctionPtr(fun, obj, targetFun)
 
-
-
-    result.reverse.mkString("\n")
+    result
   }
 
 

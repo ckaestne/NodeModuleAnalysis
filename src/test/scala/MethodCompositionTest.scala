@@ -83,30 +83,27 @@ class MethodCompositionTest extends FunSuite {
     passFile("src/test/resources/leftpad.js")
   }
 
+  import MethodCompositionAnalysis._
+
+  val policy = noCallToRequire
 
   def reject(prog: String): Unit = {
     val vm = parse(prog).toVM()
     printProg(vm)
-    try {
-      checkPolicy(new MethodCompositionAnalysis().analyzeScript(vm))
-      //      fail("expected to reject program, but passed")
-    } catch {
-      case e: Analysis3Exception =>
-        println("rejected: " + e.getMessage)
-    }
+    assert(!new MethodCompositionAnalysis().analyzeScript(vm, policy))
   }
 
   def pass(prog: String): Unit = {
     val vm = parse(prog).toVM()
     printProg(vm)
-    checkPolicy(new MethodCompositionAnalysis().analyzeScript(vm))
+    assert(new MethodCompositionAnalysis().analyzeScript(vm, policy))
   }
 
 
   def passFile(file: String): Unit = {
     val vm = parseFile(file).toVM()
     printProg(vm)
-    checkPolicy(new MethodCompositionAnalysis().analyzeScript(vm))
+    assert(new MethodCompositionAnalysis().analyzeScript(vm, policy))
   }
 
   def checkPolicy(env: Env): Unit = {
