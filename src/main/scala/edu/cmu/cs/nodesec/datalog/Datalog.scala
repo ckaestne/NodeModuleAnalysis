@@ -82,6 +82,10 @@ class Datalog {
     ruleStr += rule.toString + ".\n"
   }
 
+  def loadRules(rules: String) = {
+    val statements = rules.split("\n").filter(_.trim.nonEmpty).map(Jatalog.prepareStatement)
+    statements.foreach(_.execute(jatalog))
+  }
 
   def load(facts: List[DRelation]): Unit = facts.foreach(load)
 

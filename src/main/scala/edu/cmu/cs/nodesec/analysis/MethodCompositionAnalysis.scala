@@ -31,7 +31,7 @@ object MethodCompositionAnalysis {
 
 
     def apply(d: Datalog, f: FunDecl, methodSummaries: Set[(FunDecl, Env)]) = {
-      d.rule(Expr("callToRequire", "X"), /*:-*/ Expr("invoke", "A", "X"), Expr("pt", "A", f.uniqueId+ "param-require"))
+      d.rule(Expr("callToRequire", "X"), /*:-*/ Expr("invoke", "A", "X"), Expr("pt", "A", f.uniqueId + "param-require"))
       val result = d.query("callToRequire", "X")
 
       result.map(
@@ -93,13 +93,18 @@ class MethodCompositionAnalysis {
 
     val datalog = new Datalog()
 
-    datalog.rule(Expr("pt", "A", "C"), /*:-*/ Expr("pt", "A", "B"), Expr("pt", "B", "C"))
-    datalog.rule(Expr("pt", "R", "O"), /*:-*/ Expr("invoke", "T", "R"), Expr("functionptr", "T", "F"), Expr("return", "F", "O"))
-    datalog.rule(Expr("pt", "R", "O"), /*:-*/ Expr("invoke", "T", "R"), Expr("pt", "T", "Q"), Expr("functionptr", "Q", "F"), Expr("return", "F", "O"))
-    datalog.rule(Expr("pt", "A", "B"), /*:-*/ Expr("actual", "T", "Z", "B"), Expr("functionptr", "T", "F"), Expr("formal", "F", "Z", "A"))
-    datalog.rule(Expr("pt", "A", "B"), /*:-*/ Expr("actual", "T", "Z", "B"), Expr("pt", "T", "Q"), Expr("functionptr", "Q", "F"), Expr("formal", "F", "Z", "A"))
-    datalog.rule(Expr("pt", "A", "B"), /*:-*/ Expr("member", "X", "F", "A"), Expr("member", "X", "F", "B"))
-    datalog.rule(Expr("pt", "A", "B"), /*:-*/ Expr("member", "X", "F", "A"), Expr("pt", "X", "Y"), Expr("member", "Y", "F", "B"))
+    datalog.loadRules(
+      """
+        |pt(A, C) :- pt(A, B), pt(B, C).
+        |pt(R, O) :- invoke(T, R), functionptr(T, F), return(F, O).
+        |pt(R, O) :- invoke(T, R), pt(T, Q), functionptr(Q, F), return(F, O).
+        |pt(A, B) :- actual(T, Z, B), functionptr(T, F), formal(F, Z, A).
+        |pt(A, B) :- actual(T, Z, B), pt(T, Q), functionptr(Q, F), formal(F, Z, A).
+        |pt(A, B) :- member(X, F, A), member(X, F, B).
+        |pt(A, B) :- member(X, F, A), pt(X, Y), member(Y, F, B).
+      """.stripMargin
+    )
+
 
     println(datalog.ruleStr + "%%%")
 
