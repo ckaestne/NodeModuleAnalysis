@@ -10,7 +10,7 @@ class EnvTest extends FunSuite {
 
   val a = new IntraMethodAnalysis
 
-  val emptyEnv = Env(Map(), Map(), Map(), new Obj())
+  val emptyEnv = Env.empty
 
   test("Env") {
 
