@@ -8,7 +8,7 @@ import org.scalatest.FunSuite
 /**
   * Created by ckaestne on 11/24/16.
   */
-class MethodCompositionTest extends FunSuite {
+class MethodCompositionTest extends AbstractAnalysisTest {
 
 
   import MethodCompositionAnalysis._
@@ -139,7 +139,7 @@ class MethodCompositionTest extends FunSuite {
   }
 
   ///////////////////////////////////////////////
-  // policy: no write to external objects
+  // other policies
 
   test("write to closure") {
     pass("var x; x=1;", noWriteToClosure)
@@ -153,13 +153,13 @@ class MethodCompositionTest extends FunSuite {
     pass("var x=1; return x;", noReadFromGlobal)
     reject("return x;", noReadFromGlobal)
     reject("function foo(){return x;}", noReadFromGlobal)
-    reject("val x = 1; function foo(){return x;}", noReadFromGlobal) //analysis is fairly imprecise
+    reject("var x = 1; function foo(){return x;}", noReadFromGlobal) //analysis is fairly imprecise
   }
 
   test("no prototype") {
-    pass("(function(){})(); var x = {};",noPrototype)
-    reject("var x={}; x.prototype.foo=3;",noPrototype)
-    reject("function foo(){}; var x=new foo(); x.prototype.foo=3;",noPrototype)
+    pass("(function(){})(); var x = {};", noPrototype)
+    reject("var x={}; x.prototype.foo=3;", noPrototype)
+    reject("function foo(){}; var x=new foo(); x.prototype.foo=3;", noPrototype)
   }
 
   test("forbidden global objects") {
@@ -173,88 +173,7 @@ class MethodCompositionTest extends FunSuite {
     pass("function foo(){} foo(); var x=foo; x();", noAlwaysUnresolvedFunctionCalls)
     reject("foo();", noAlwaysUnresolvedFunctionCalls)
     reject("require();", noAlwaysUnresolvedFunctionCalls)
-    pass("var x; if (3) x=function(){}; x();", noAlwaysUnresolvedFunctionCalls)//cannot check absence of unresolved call in some cases
+    pass("var x; if (3) x=function(){}; x();", noAlwaysUnresolvedFunctionCalls) //cannot check absence of unresolved call in some cases
   }
-
-  def reject(prog: String, policies: Policy*): Unit = {
-    assert(policies.nonEmpty, "no policies provided")
-    val vm = parse(prog)
-    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policies.reduce(_ + _))
-    println(policyViolations.map(_.render).mkString("\n"))
-    assert(policyViolations.nonEmpty, "policy violation expected, but not found")
-  }
-
-  def pass(prog: String, policies: Policy*): Unit = {
-    assert(policies.nonEmpty, "no policies provided")
-    val vm = parse(prog)
-    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policies.reduce(_ + _))
-    assert(policyViolations.isEmpty, "policy violation found:\n" + policyViolations.map(_.render).mkString("\n"))
-  }
-
-
-  def passFile(file: String, policies: Policy*): Unit = {
-    assert(policies.nonEmpty, "no policies provided")
-    val vm = parseFile(file)
-    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policies.reduce(_ + _))
-    assert(policyViolations.isEmpty, "policy violation found:\n" + policyViolations.map(_.render).mkString("\n"))
-  }
-
-  def checkPolicy(env: Env): Unit = {
-    //    for ((call, paramset) <- env.calls;
-    //         params <- paramset;
-    //         target <- params.head)
-    //      if (target == Param("require"))
-    //        throw new Analysis3Exception("call to require function found -- " + call)
-  }
-
-  def parse(prog: String) = {
-    val parsed = p.parseAll(p.Program, prog)
-    if (!parsed.successful) println(parsed)
-    parsed.get
-  }
-
-  def parseFile(file: String) = {
-    val parsed = p.parseAll(p.Program, getSource(file))
-    if (!parsed.successful) println(parsed)
-    parsed.get
-  }
-
-
-  val p = new JSParser()
-
-  def ps(r: p.ParseResult[Any]): Unit = {
-    println(r)
-    r match {
-      case p.Success(_, _) =>
-      case p.NoSuccess(msg, rest) => fail("parsing failed: " + msg)
-    }
-  }
-
-
-  def getSource(f: String) =
-    io.Source.fromFile(f).getLines().map(
-      l => if (l.contains("//")) l.take(l.indexOf("//")) else l
-    ).map(
-      l => if (l.startsWith("#!")) "" else l
-    ).mkString("\n")
-
-  //  def printProg(s: Statement, indent: Int = 0): Unit = {
-  //    val in = "  " * indent
-  //    s match {
-  //      case Sequence(inner) => inner.reverse.map(printProg(_, indent))
-  //      case FunDecl(v, args, body) =>
-  //        println(in + s"FunDecl $v, $args:")
-  //        printProg(body, indent + 1)
-  //      case ConditionalStatement(a, b) =>
-  //        println(in + s"if:")
-  //        printProg(a, indent + 1)
-  //        println(in + "else:")
-  //        printProg(b, indent + 1)
-  //      case LoopStatement(a) =>
-  //        println(in + s"loop:")
-  //        printProg(a, indent + 1)
-  //      case _ => println(in + s.toString)
-  //    }
-  //  }
 
 }
