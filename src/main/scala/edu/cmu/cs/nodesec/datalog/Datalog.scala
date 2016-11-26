@@ -3,7 +3,7 @@ package edu.cmu.cs.nodesec.datalog
 import edu.cmu.cs.nodesec.analysis._
 import za.co.wstoop.jatalog.{Jatalog, Rule, Expr => DLExpr}
 
-import collection.JavaConverters._
+import scala.collection.JavaConverters._
 
 /**
   * Lightweight layer to abstract from concrete datalog engine
@@ -13,9 +13,7 @@ import collection.JavaConverters._
 
 
 sealed abstract class DRelation(fun: FunDecl) {
-  def prefix = hash(fun)
-
-  def hash(f: FunDecl) = Integer.toHexString(f.hashCode()) + "#"
+  def prefix = fun.uniqueId
 
   def predicate: String
 
@@ -60,7 +58,7 @@ case class DInvoke(fun: FunDecl, targetObj: Value, returnObj: Value) extends DRe
 case class DFunctionPtr(fun: FunDecl, obj: Value, targetFun: FunDecl) extends DRelation(fun) {
   def predicate = "functionptr"
 
-  def terms = prefix + obj :: hash(targetFun) :: Nil
+  def terms = prefix + obj :: targetFun.uniqueId :: Nil
 }
 
 
@@ -81,14 +79,14 @@ class Datalog {
   def rule(head: Expr, body: Expr*) = {
     val rule = new Rule(head.toDatalog(), body.map(_.toDatalog()): _*)
     jatalog.rule(rule)
-    ruleStr += rule.toString+".\n"
+    ruleStr += rule.toString + ".\n"
   }
-
 
 
   def load(facts: List[DRelation]): Unit = facts.foreach(load)
 
   def load(fact: DRelation): Unit = jatalog.fact(fact.toDatalogExpr)
 
-  def query(predicate: String, terms: String*) = jatalog.query(new DLExpr(predicate, terms: _*)).asScala.map(_.asScala)
+  def query(predicate: String, terms: String*): Seq[Map[String, String]] =
+    jatalog.query(new DLExpr(predicate, terms: _*)).asScala.toSeq.map(Map() ++ _.asScala)
 }

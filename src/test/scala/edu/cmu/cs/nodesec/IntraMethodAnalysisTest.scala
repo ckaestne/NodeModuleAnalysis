@@ -10,6 +10,7 @@ import org.scalatest.FunSuite
   */
 class IntraMethodAnalysisTest extends FunSuite {
 
+
   test("direct call") {
     reject("require('foo');")
   }

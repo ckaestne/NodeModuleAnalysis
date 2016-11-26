@@ -73,7 +73,9 @@ case class Load(result: Variable, v: Variable, field: String) extends Statement
 
 case class Store(target: Variable, field: String, v: Variable) extends Statement
 
-case class FunDecl(v: Variable, args: List[NamedVariable], body: Statement) extends Statement
+case class FunDecl(v: Variable, args: List[NamedVariable], body: Statement) extends Statement {
+  lazy val uniqueId = Integer.toHexString(hashCode()) + "#"
+}
 
 case class ConditionalStatement(alt1: Statement, alt2: Statement) extends Statement
 

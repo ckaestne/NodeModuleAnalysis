@@ -11,7 +11,7 @@ import org.scalatest.FunSuite
 class MethodCompositionTest extends FunSuite {
 
 
-  test("return") {
+  test("return and closure") {
     reject(
       """
         |function f() { return require; };
@@ -21,7 +21,7 @@ class MethodCompositionTest extends FunSuite {
     )
   }
 
-  test("return with field") {
+  test("return from closure with field") {
     reject(
       """
         |function f() {
@@ -83,6 +83,11 @@ class MethodCompositionTest extends FunSuite {
     passFile("src/test/resources/leftpad.js")
   }
 
+  test("closure") {
+    reject("function foo() { require(); }")
+  }
+
+
   import MethodCompositionAnalysis._
 
   val policy = noCallToRequire
@@ -90,20 +95,24 @@ class MethodCompositionTest extends FunSuite {
   def reject(prog: String): Unit = {
     val vm = parse(prog).toVM()
     printProg(vm)
-    assert(!new MethodCompositionAnalysis().analyzeScript(vm, policy))
+    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policy)
+    println(policyViolations.map(_.render).mkString("\n"))
+    assert(policyViolations.nonEmpty, "policy violation expected, but not found")
   }
 
   def pass(prog: String): Unit = {
     val vm = parse(prog).toVM()
     printProg(vm)
-    assert(new MethodCompositionAnalysis().analyzeScript(vm, policy))
+    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policy)
+    assert(policyViolations.isEmpty, "policy violation found:\n"+policyViolations.map(_.render).mkString("\n"))
   }
 
 
   def passFile(file: String): Unit = {
     val vm = parseFile(file).toVM()
     printProg(vm)
-    assert(new MethodCompositionAnalysis().analyzeScript(vm, policy))
+    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policy)
+    assert(policyViolations.isEmpty, "policy violation found:\n"+policyViolations.map(_.render).mkString("\n"))
   }
 
   def checkPolicy(env: Env): Unit = {

@@ -1,21 +1,58 @@
 package edu.cmu.cs.nodesec.analysis
 
-import edu.cmu.cs.nodesec.datalog._
-import za.co.wstoop.jatalog.Rule
+import edu.cmu.cs.nodesec.datalog.{Datalog, _}
+
+import scala.util.parsing.input.{NoPosition, Position}
 
 /**
   * Created by ckaestne on 11/25/16.
   */
 object MethodCompositionAnalysis {
-  type Policy = (Datalog, FunDecl) => Boolean
 
-  def composePolicy(p1: Policy, p2: Policy) = (d: Datalog, f: FunDecl) => p1(d, f) && p2(d, f)
-
-  val noCallToRequire: Policy = (d: Datalog, f: FunDecl) => {
-    d.rule(Expr("callToRequire", "A"), /*:-*/ Expr("invoke", "X", "A"), Expr("pt", "A", Integer.toHexString(f.hashCode()) + "#param-require"))
-    d.query("callToRequire", "A").isEmpty
+  case class PolicyViolation(msg: String, pos: Position) {
+    def render: String = {
+      if (pos == NoPosition) msg
+      else msg + " in line " + pos.line + "\n" + pos.longString
+    }
   }
+
+  trait Policy {
+    def apply(datalog: Datalog, mainFun: FunDecl, methodSummaries: Set[(FunDecl, Env)]): Seq[PolicyViolation]
+
+    def +(that: Policy): Policy = new ComposedPolicy(this, that)
+  }
+
+
+  class ComposedPolicy(p1: Policy, p2: Policy) extends Policy {
+    def apply(d: Datalog, f: FunDecl, s: Set[(FunDecl, Env)]) = p1(d, f, s) ++ p2(d, f, s)
+  }
+
+  class NoCallToRequire extends Policy {
+
+
+    def apply(d: Datalog, f: FunDecl, methodSummaries: Set[(FunDecl, Env)]) = {
+      d.rule(Expr("callToRequire", "X"), /*:-*/ Expr("invoke", "A", "X"), Expr("pt", "A", f.uniqueId+ "param-require"))
+      val result = d.query("callToRequire", "X")
+
+      result.map(
+        r => PolicyViolation("Potential call to 'require' found", getPosition(r("X"), methodSummaries))
+      )
+    }
+
+    private def getPosition(retObjString: String, methodSummaries: Set[(FunDecl, Env)]): Position = {
+      for ((fun, env) <- methodSummaries;
+           if retObjString startsWith fun.uniqueId;
+           (call, retVals) <- env.calls;
+           retVal <- retVals;
+           if (fun.uniqueId + retVal) == retObjString
+      ) return call.pos
+      return NoPosition
+    }
+  }
+
+  lazy val noCallToRequire = new NoCallToRequire
 }
+
 class MethodCompositionAnalysis {
 
   import AnalysisHelper._
@@ -30,8 +67,7 @@ class MethodCompositionAnalysis {
   }
 
 
-
-  def analyzeScript(p: Statement, policy: Policy): Boolean = {
+  def analyzeScript(p: Statement, policy: Policy): Seq[PolicyViolation] = {
     val mainFun = AnalysisHelper.wrapScript(p)
     val funDecls = collectFunDecls(mainFun)
 
@@ -40,10 +76,8 @@ class MethodCompositionAnalysis {
 
     val result = compose(summaries)
 
-    println("callToRequire(A):-invoke(X,A), pt(A, " + Integer.toHexString(mainFun.hashCode()) + "#param-require).\n" +
-      "callToRequire(A)?")
 
-    policy(result, mainFun)
+    policy(result, mainFun, summaries)
   }
 
 
@@ -67,7 +101,7 @@ class MethodCompositionAnalysis {
     datalog.rule(Expr("pt", "A", "B"), /*:-*/ Expr("member", "X", "F", "A"), Expr("member", "X", "F", "B"))
     datalog.rule(Expr("pt", "A", "B"), /*:-*/ Expr("member", "X", "F", "A"), Expr("pt", "X", "Y"), Expr("member", "Y", "F", "B"))
 
-    println(datalog.ruleStr+"%%%")
+    println(datalog.ruleStr + "%%%")
 
     for ((method, summary) <- methodSummaries) {
       val facts = summaryToDatalog(method, summary)
