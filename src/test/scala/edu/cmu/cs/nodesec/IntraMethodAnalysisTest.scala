@@ -194,8 +194,7 @@ class IntraMethodAnalysisTest extends FunSuite {
 
 
   def reject(prog: String): Unit = {
-    val vm = parse(prog).toVM()
-    printProg(vm)
+    val vm = parse(prog)
     try {
       checkPolicy(new IntraMethodAnalysis().analyzeScript(vm))
       fail("expected to reject program, but passed")
@@ -206,15 +205,13 @@ class IntraMethodAnalysisTest extends FunSuite {
   }
 
   def pass(prog: String): Unit = {
-    val vm = parse(prog).toVM()
-    printProg(vm)
+    val vm = parse(prog)
     checkPolicy(new IntraMethodAnalysis().analyzeScript(vm))
   }
 
 
   def passFile(file: String): Unit = {
-    val vm = parseFile(file).toVM()
-    printProg(vm)
+    val vm = parseFile(file)
     checkPolicy(new IntraMethodAnalysis().analyzeScript(vm))
   }
 
@@ -257,23 +254,23 @@ class IntraMethodAnalysisTest extends FunSuite {
       l => if (l.startsWith("#!")) "" else l
     ).mkString("\n")
 
-  def printProg(s: Statement, indent: Int = 0): Unit = {
-    val in = "  " * indent
-    s match {
-      case Sequence(inner) => inner.reverse.map(printProg(_, indent))
-      case FunDecl(v, args, body) =>
-        println(in + s"FunDecl $v, $args:")
-        printProg(body, indent + 1)
-      case ConditionalStatement(a, b) =>
-        println(in + s"if:")
-        printProg(a, indent + 1)
-        println(in + "else:")
-        printProg(b, indent + 1)
-      case LoopStatement(a) =>
-        println(in + s"loop:")
-        printProg(a, indent + 1)
-      case _ => println(in + s.toString)
-    }
-  }
+//  def printProg(s: Statement, indent: Int = 0): Unit = {
+//    val in = "  " * indent
+//    s match {
+//      case Sequence(inner) => inner.reverse.map(printProg(_, indent))
+//      case FunDecl(v, args, body) =>
+//        println(in + s"FunDecl $v, $args:")
+//        printProg(body, indent + 1)
+//      case ConditionalStatement(a, b) =>
+//        println(in + s"if:")
+//        printProg(a, indent + 1)
+//        println(in + "else:")
+//        printProg(b, indent + 1)
+//      case LoopStatement(a) =>
+//        println(in + s"loop:")
+//        printProg(a, indent + 1)
+//      case _ => println(in + s.toString)
+//    }
+//  }
 
 }

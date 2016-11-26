@@ -10,7 +10,8 @@ case class Env(
                 members: Map[Obj, Map[String, Set[Value]]],
                 calls: Map[Call, Set[MethodReturnValue]],
                 functionPtrs: Set[(Obj, FunDecl)],
-                scopeObj: Obj
+                localScopeObj: Obj,
+                closureObj: Obj
               ) {
 
 
@@ -18,18 +19,22 @@ case class Env(
 
 
   def lookup(v: Variable): (Set[Value], Env) = v match {
-    case NamedVariable(n) =>
-      //named variables are actually fields of the scope
-      this.lookupFieldFromObj(scopeObj, n, () => new UnknownValue("$scope-" + n))
+    //named variables are actually fields of the scope
+    case LocalVariable(n) =>
+      this.lookupFieldFromObj(localScopeObj, n, () => new UnknownValue("$scope-" + n))
+    case ExternalVariable(n) =>
+      this.lookupFieldFromObj(closureObj, n, () => new UnknownValue("$scope-" + n))
     case _: AnonymousVariable =>
       (store(v), this)
   }
 
   //assignment killing previous assignments
   def store(name: Variable, value: Set[Value]): Env = name match {
-    case NamedVariable(n) =>
-      //named variables are actually fields of the scope
-      storeField(scopeObj, n, value)
+    //named variables are actually fields of the scope
+    case LocalVariable(n) =>
+      storeField(localScopeObj, n, value)
+    case ExternalVariable(n) =>
+      storeField(closureObj, n, value)
     case _: AnonymousVariable => this.copy(store = store + (name -> value))
   }
 
@@ -111,12 +116,14 @@ case class Env(
 
 
   def union(that: Env): Env = {
-    assert(this.scopeObj == that.scopeObj)
+    assert(this.localScopeObj == that.localScopeObj)
+    assert(this.closureObj == that.closureObj)
     Env(relUnion(this.store, that.store, () => Set()),
       rel3Union(this.members, that.members, () => Set()),
       relUnion(this.calls, that.calls, () => Set()),
       this.functionPtrs ++ that.functionPtrs,
-      this.scopeObj
+      this.localScopeObj,
+      this.closureObj
     )
   }
 
@@ -137,5 +144,5 @@ case class Env(
 }
 
 object Env {
-  def empty = Env(Map(), Map(), Map(), Set(), new Obj())
+  def empty = Env(Map(), Map(), Map(), Set(), new Obj(), new Obj())
 }

@@ -32,6 +32,7 @@ class ParserTest extends FunSuite {
     ps(p.parseAll(p.Expression, "a(1)(2)"))
     ps(p.parseAll(p.Expression, "a.x1.x2.x3"))
     ps(p.parseAll(p.Expression, "a(1).foo(2).bar.bar2"))
+    ps(p.parseAll(p.Program, "function foo() {} function foo() {}"))
     //    println(p.parseAll(p.word, "foo bar"))
   }
 
@@ -73,9 +74,9 @@ class ParserTest extends FunSuite {
 //    val result = new Analysis().analyze(prog)
 //    println(result)
 //    assert(result.isEmpty, result.mkString("\n"))
-    prog.toVM().asInstanceOf[Sequence].s.reverse.foreach(println)
-    println("#############")
-    new IntraMethodAnalysis().analyzeScript(prog.toVM())
+//    prog.toVM().asInstanceOf[Sequence].s.reverse.foreach(println)
+//    println("#############")
+//    new IntraMethodAnalysis().analyzeScript(prog.toVM())
 //    println(prog.toVM())
 
 //    val env = Env.empty

@@ -55,16 +55,16 @@ case class DInvoke(fun: FunDecl, targetObj: Value, returnObj: Value) extends DRe
   def terms = prefix :: prefix + targetObj :: prefix + returnObj :: Nil
 }
 
-case class DFunctionPtr(fun: FunDecl, obj: Value, targetFun: FunDecl) extends DRelation(fun) {
-  def predicate = "functionptr"
+case class DFunctionDecl(fun: FunDecl, obj: Value, targetFun: FunDecl) extends DRelation(fun) {
+  def predicate = "functiondecl"
 
-  def terms = prefix + obj :: targetFun.uniqueId :: Nil
+  def terms = prefix :: prefix + obj :: targetFun.uniqueId :: Nil
 }
 
-case class DScope(fun: FunDecl, scopeObj: Value) extends DRelation(fun) {
+case class DScope(fun: FunDecl, kind: String, scopeObj: Value) extends DRelation(fun) {
   def predicate = "scope"
 
-  def terms = prefix :: prefix + scopeObj :: Nil
+  def terms = prefix :: kind :: prefix + scopeObj :: Nil
 }
 
 

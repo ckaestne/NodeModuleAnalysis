@@ -59,15 +59,15 @@ class MethodSummaryTest extends FunSuite {
   }
 
   def pass(prog: String): Unit = {
-    val vm = parse(prog).toVM()
-    printProg(vm)
+    val vm = parse(prog)
+//    printProg(vm)
     val env = analysis3.analyzeScript(vm)
     printEnv(env)
   }
 
   def passFile(file: String): Unit = {
-    val vm = parseFile(file).toVM()
-    printProg(vm)
+    val vm = parseFile(file)
+//    printProg(vm)
     analysis3.analyzeScript(vm)
   }
 
@@ -102,31 +102,31 @@ class MethodSummaryTest extends FunSuite {
       l => if (l.startsWith("#!")) "" else l
     ).mkString("\n")
 
-  def printProg(s: Statement, indent: Int = 0): Unit = {
-    val in = "  " * indent
-    s match {
-      case Sequence(inner) => inner.reverse.map(printProg(_, indent))
-      case FunDecl(v, args, body) =>
-        println(in + s"FunDecl $v, $args:")
-        printProg(body, indent + 1)
-      case ConditionalStatement(a, b) =>
-        println(in + s"if:")
-        printProg(a, indent + 1)
-        println(in + "else:")
-        printProg(b, indent + 1)
-      case LoopStatement(a) =>
-        println(in + s"loop:")
-        printProg(a, indent + 1)
-      case _ => println(in + s.toString)
-    }
-  }
+//  def printProg(s: Statement, indent: Int = 0): Unit = {
+//    val in = "  " * indent
+//    s match {
+//      case Sequence(inner) => inner.reverse.map(printProg(_, indent))
+//      case FunDecl(v, args, body) =>
+//        println(in + s"FunDecl $v, $args:")
+//        printProg(body, indent + 1)
+//      case ConditionalStatement(a, b) =>
+//        println(in + s"if:")
+//        printProg(a, indent + 1)
+//        println(in + "else:")
+//        printProg(b, indent + 1)
+//      case LoopStatement(a) =>
+//        println(in + s"loop:")
+//        printProg(a, indent + 1)
+//      case _ => println(in + s.toString)
+//    }
+//  }
 
 
   def printEnv(env: Env): Unit = {
     println("### Env: ")
     println(env)
 
-    val ret = NamedVariable("$return")
+    val ret = LocalVariable("$return")
     val retObjs = env.lookup(ret)._1
 
     var printed: Set[Value] = Set()

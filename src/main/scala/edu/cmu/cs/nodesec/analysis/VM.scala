@@ -5,16 +5,31 @@ import scala.util.parsing.input.Positional
 object VariableHelper {
   def freshVar = new AnonymousVariable()
 
-  val thisVar = new NamedVariable("this")
+  val thisVar = new LocalVariable("this")
   val emptyStatement = Sequence(Nil)
 }
 
 trait Variable
 
-case class NamedVariable(name: String) extends Variable {
-  override def toString: String = "var-" + name
+/**
+  * local variables are declared within the function
+  */
+case class LocalVariable(name: String) extends Variable {
+  override def toString: String = "lv-" + name
 }
 
+/**
+  * all named variables that are not declared come from an
+  * outer scope (possibly global)
+  */
+case class ExternalVariable(name: String) extends Variable {
+  override def toString: String = "ev-" + name
+}
+
+/**
+  * anonymous variables are used in the analysis for temporary
+  * computations
+  */
 class AnonymousVariable() extends Variable {
   override def toString: String = "v-" + this.hashCode()
 }
@@ -33,7 +48,7 @@ trait Statement extends Positional {
     case _ => false
   }
 
-  def copyPosition(p: Positional) = {
+  def copyPosition(p: Positional): this.type = {
     this.setPos(p.pos)
     this
   }
@@ -69,7 +84,7 @@ case class Load(result: Variable, v: Variable, field: String) extends Statement
 
 case class Store(target: Variable, field: String, v: Variable) extends Statement
 
-case class FunDecl(v: Variable, args: List[NamedVariable], body: Statement) extends Statement {
+case class FunDecl(v: Variable, args: List[LocalVariable], localVariables: List[LocalVariable], body: Statement) extends Statement {
   lazy val uniqueId = Integer.toHexString(hashCode()) + "#"
 }
 

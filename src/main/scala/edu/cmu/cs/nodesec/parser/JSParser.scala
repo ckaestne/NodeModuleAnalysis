@@ -5,11 +5,12 @@ import scala.util.parsing.combinator._
 
 class JSParser extends RegexParsers {
 
-  def Program: Parser[CompoundStmt] = positioned(Element.* ^^ CompoundStmt)
+  def Program: Parser[FunctionBody] = positioned(Element.* ^^ FunctionBody)
 
+  def FunBody: Parser[FunctionBody] = "{"~> Program <~ "}"
 
   def Element: Parser[Stmt] =
-    positioned(FunctionExpression ^^ ExpressionStmt) |
+    FunctionDeclaration |
       Statement
 
   def ParameterList: Parser[List[Id]] = repsep(Identifier, ",")
@@ -92,7 +93,12 @@ class JSParser extends RegexParsers {
         _.reverse
       }) ^^ memberExpr)
 
-  def FunctionExpression: Parser[Expr] = positioned((("function" ~> opt(Identifier) <~ "(") ~ ParameterList <~ ")") ~ CompoundStatement ^^ funExpr)
+
+  def FunctionDeclaration: Parser[FunDeclaration] =
+    (("function" ~> Identifier <~ "(") ~ ParameterList <~ ")") ~ FunBody ^^ funDecl
+
+  def FunctionExpression: Parser[Expr] =
+    positioned((("function" ~> opt(Identifier) <~ "(") ~ ParameterList <~ ")") ~ FunBody ^^ funExpr)
 
   def PrimaryExpression: Parser[Expr] =
     "(" ~> Expression <~ ")" |
@@ -167,7 +173,8 @@ class JSParser extends RegexParsers {
 
   def ifStmt(a: Expr ~ Stmt ~ Option[Stmt]) = IfStmt(a._1._1, a._1._2, a._2)
 
-  def funExpr(a: (Option[Id] ~ List[Id]) ~ Stmt) = FunExpr(a._1._1, a._1._2, a._2)
+  def funExpr(a: (Option[Id] ~ List[Id]) ~ FunctionBody) = FunExpr(a._1._1, a._1._2, a._2)
+  def funDecl(a: (Id ~ List[Id]) ~ FunctionBody) = FunDeclaration(a._1._1, a._1._2, a._2)
 
   def memberExpr(x: Expr ~ List[String ~ Any]): Expr = x match {
     case a ~ Nil => a

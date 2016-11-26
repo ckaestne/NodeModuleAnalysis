@@ -1,5 +1,7 @@
 package edu.cmu.cs.nodesec.analysis
 
+import edu.cmu.cs.nodesec.parser.{FunExpr, FunctionBody, Id}
+
 /**
   * Created by ckaestne on 11/24/16.
   */
@@ -20,7 +22,7 @@ class IntraMethodAnalysis {
   private def freshObject = new Obj()
 
   private def freshUnknownObject(v: Variable) = v match {
-    case NamedVariable(name) => new UnknownValue("unknown-" + name)
+    case LocalVariable(name) => new UnknownValue("unknown-" + name)
     case _ => new UnknownValue()
   }
 
@@ -28,19 +30,20 @@ class IntraMethodAnalysis {
   type Field = String
 
 
-  val scopeObj: Obj = Param("$scope")
-
-  def analyzeScript(p: Statement): Env = {
-    analyze(AnalysisHelper.wrapScript(p))
-  }
+  def analyzeScript(fun: FunctionBody): Env =
+    analyze(wrapScript(fun))
 
   def analyze(fun: FunDecl): Env = {
     //initialize store with parameters and return value; assign all parameters and local variables as members of the scope
+    val closureScopeObj: Obj = Param("$closure")
+    val localScopeObj: Obj = Param("$local")
     val params = fun.args.map(a => (a, Set[Value](new Param(a.name))))
+    val locals = fun.localVariables.map(a => (a, Set[Value](PrimitiveValue)))
     val store: Map[Variable, Set[Value]] = Map[Variable, Set[Value]]() ++
-      params.toMap + (returnVariable -> Set(PrimitiveValue))
-    val members: Map[Obj, Map[String, Set[Value]]] = Map(scopeObj -> params.map(a => (a._1.name, a._2)).toMap)
-    val env = Env(store, members, Map(), Set(), scopeObj)
+      (params ++ locals).toMap + (returnVariable -> Set(PrimitiveValue))
+    val members: Map[Obj, Map[String, Set[Value]]] =
+      Map(localScopeObj -> (params ++ locals).map(a => (a._1.name, a._2)).toMap)
+    val env = Env(store, members, Map(), Set(), localScopeObj, closureScopeObj)
     analyze(env, fun.body)
   }
 
@@ -121,12 +124,11 @@ class Analysis3Exception(msg: String) extends RuntimeException(msg)
 
 
 object AnalysisHelper {
-  def wrapScript(p: Statement) =
-    new FunDecl(new AnonymousVariable(), List(
-      NamedVariable("module"), NamedVariable("require"), NamedVariable("exports")
-    ), p)
 
-  val returnVariable = NamedVariable("$return")
+  def wrapScript(p: FunctionBody): FunDecl =
+    FunExpr(None, List(Id("module"), Id("require"), Id("exports")), p).toVM()
+
+  val returnVariable = LocalVariable("$return")
 }
 
 object NameHelper {

@@ -1,6 +1,7 @@
 package edu.cmu.cs.nodesec.analysis
 
 import edu.cmu.cs.nodesec.datalog.{Datalog, _}
+import edu.cmu.cs.nodesec.parser.FunctionBody
 
 import scala.util.parsing.input.{NoPosition, Position}
 
@@ -67,8 +68,10 @@ class MethodCompositionAnalysis {
   }
 
 
-  def analyzeScript(p: Statement, policy: Policy): Seq[PolicyViolation] = {
-    val mainFun = AnalysisHelper.wrapScript(p)
+  def analyzeScript(p: FunctionBody, policy: Policy): Seq[PolicyViolation] =
+    analyze(AnalysisHelper.wrapScript(p), policy)
+
+  def analyze(mainFun: FunDecl, policy: Policy): Seq[PolicyViolation] = {
     val funDecls = collectFunDecls(mainFun)
 
     val summaries = for (funDecl <- funDecls)
@@ -100,8 +103,8 @@ class MethodCompositionAnalysis {
         |
         |% resolved call graph edges
         |% from origin OFUNID (with object representing the target TARGETOBJ and the resulting value RETVAL) to the target function TFUNID
-        |call(OFUNID,TARGETOBJ,RETVAL,TFUNID) :- invoke(OFUNID,TARGETOBJ,RETVAL), functionptr(TARGETOBJ, TFUNID).
-        |call(OFUNID,TARGETOBJ,RETVAL,TFUNID) :- invoke(OFUNID,TARGETOBJ,RETVAL), pt(TARGETOBJ, O), functionptr(O, TFUNID).
+        |call(OFUNID,TARGETOBJ,RETVAL,TFUNID) :- invoke(OFUNID,TARGETOBJ,RETVAL), functiondecl(U, TARGETOBJ, TFUNID).
+        |call(OFUNID,TARGETOBJ,RETVAL,TFUNID) :- invoke(OFUNID,TARGETOBJ,RETVAL), pt(TARGETOBJ, O), functiondecl(U, O, TFUNID).
         |
         |% link returned value of function call to return-value of the target function
         |pt(R, O) :- call(U1, U2, R, F), return(F, O).
@@ -113,17 +116,22 @@ class MethodCompositionAnalysis {
         |pt(A, B) :- member(X, F, A), pt(X, Y), member(Y, F, B).
         |
         |% link scope to scope of closure
-        |pt(A, B):-scope(F2, A),call(F1,U1,U2,F2),scope(F1,B).
-      """.stripMargin
+        |parentscope(OUTER, INNER) :- functiondecl(OUTER, U, INNER).
+        |pt(A, B):-scope(F2, closure, A),parentscope(F1,F2),scope(F1, closure, B).
+        |pt(A, B):-scope(F2, closure, A),parentscope(F1,F2),scope(F1, local, B).
+        |
+        |%    TODO: the following would allow writes to be propagated back, but makes everything absolutely
+        |%    conservative by merging local and global scopes of all function that contain any other function decl.
+        |%    for now we rather have a policy against writing to outer environments
+        |% scope needs to be shared both directions, as inner functions can update values in outer scopes
+        |    pt(B, A):-scope(F2, closure, A),parentscope(F1,F2),scope(F1, closure, B).
+        |      pt(B, A):-scope(F2, closure, A),parentscope(F1,F2),scope(F1, local, B).
+        |
+        |      """.stripMargin
     datalog.loadRules(rules)
 
-//    > scope(f1, s1).
-//      > scope(f2, s2).
-//      > member(s1, f, require).
-//      > member(s2, f, unkn).
-//      > call(f1, f2).
-//      > pt(A, B):-scope(F2, A),call(F1,F2),scope(F1,B).
-//      > pt(A,B)?
+
+
 
 
     println(datalog.ruleStr + "%%%")
@@ -163,9 +171,10 @@ class MethodCompositionAnalysis {
     }
 
     for ((obj, targetFun) <- env.functionPtrs)
-      result ::= DFunctionPtr(fun, obj, targetFun)
+      result ::= DFunctionDecl(fun, obj, targetFun)
 
-    result ::= DScope(fun, env.scopeObj)
+    result ::= DScope(fun, "local", env.localScopeObj)
+    result ::= DScope(fun, "closure", env.closureObj)
 
 
     result

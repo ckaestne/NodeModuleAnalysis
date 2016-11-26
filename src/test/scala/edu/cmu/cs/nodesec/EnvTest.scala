@@ -14,7 +14,7 @@ class EnvTest extends FunSuite {
 
   test("Env") {
 
-    val v = new NamedVariable("v")
+    val v = new LocalVariable("v")
     val o1 = new Obj("o1")
     val o2 = new Obj("o2")
     val o3 = new Obj("o3")
