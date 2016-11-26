@@ -25,7 +25,7 @@ class MethodCompositionAnalysis {
 
     val result = compose(summaries)
 
-    println("callToRequire(A):-call(X,A), pt(A, " + Integer.toHexString(mainFun.hashCode()) + "#param-require).\n" +
+    println("callToRequire(A):-invoke(X,A), pt(A, " + Integer.toHexString(mainFun.hashCode()) + "#param-require).\n" +
       "callToRequire(A)?")
 
     result
@@ -47,8 +47,10 @@ class MethodCompositionAnalysis {
       """
         |%rules
         |pt(A,C) :- pt(A,B), pt(B,C).
-        |pt(A,B) :- call(A, F), return(F, B).
-        |pt(A,B) :- arg(F,Z,A), callarg(F,Z,B).
+        |pt(R,O) :- invoke(T, R), functionptr(T, F), return(F, O).
+        |pt(R,O) :- invoke(T, R), pt(T, Q), functionptr(Q, F), return(F, O).
+        |pt(A,B) :- actual(T,Z,B), functionptr(T, F), formal(F,Z,A).
+        |pt(A,B) :- actual(T,Z,B), pt(T, Q), functionptr(Q, F), formal(F,Z,A).
         |pt(A,B) :- member(X, F, A), member(X, F, B).
         |pt(A,B) :- member(X, F, A), member(Y, F, B), pt(X, Y).
         |%""".stripMargin)
@@ -67,7 +69,7 @@ class MethodCompositionAnalysis {
     result ::= s"fun($prefix)."
     for ((arg, idx) <- fun.args.zipWithIndex;
          obj <- env.lookup(arg)._1)
-      result ::= s"arg($prefix, ${idx + 1}, $prefix$obj)."
+      result ::= s"formal($prefix, ${idx + 1}, $prefix$obj)."
 
     for (retvar <- Set(returnVariable); obj <- env.lookup(retvar)._1)
       result ::= s"return(${prefix}, $prefix$obj)."
@@ -80,15 +82,13 @@ class MethodCompositionAnalysis {
     for ((call, retVals) <- env.calls;
          retVal <- retVals;
          target <- retVal.target) {
-      val targetStr = target match {
-        case f: Fun => Integer.toHexString(f.f.hashCode()) + "#"
-        case _ => prefix + target //TODO fixme
-      }
-      result ::= s"call($prefix$retVal, $targetStr)."
+      result ::= s"invoke($prefix$target, $prefix$retVal)."
       for ((argSet, idx) <- retVal.args.zipWithIndex; arg <- argSet)
-        result ::= s"callarg($targetStr, ${idx + 1}, $prefix$arg)."
+        result ::= s"actual($prefix$target, ${idx + 1}, $prefix$arg)."
     }
 
+    for ((obj, fun) <- env.functionPtrs)
+      result ::= s"functionptr($prefix$obj, ${Integer.toHexString(fun.hashCode())}#)."
 
 
 

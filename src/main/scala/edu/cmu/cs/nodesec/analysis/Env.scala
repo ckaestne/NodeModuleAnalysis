@@ -9,6 +9,7 @@ case class Env(
                 store: Map[Variable, Set[Value]],
                 members: Map[Obj, Map[String, Set[Value]]],
                 calls: Map[Call, Set[MethodReturnValue]],
+                functionPtrs: Set[(Obj, FunDecl)],
                 scopeObj: Obj
               ) {
 
@@ -111,6 +112,7 @@ case class Env(
     Env(relUnion(this.store, that.store, () => Set()),
       rel3Union(this.members, that.members, () => Set()),
       relUnion(this.calls, that.calls, () => Set()),
+      this.functionPtrs ++ that.functionPtrs,
       this.scopeObj
     )
   }
@@ -127,8 +129,10 @@ case class Env(
   def addCall(c: Call, retVal: MethodReturnValue): Env =
     this.copy(calls = calls + (c -> (calls.getOrElse(c, Set()) + retVal)))
 
+  def addFunctionPtr(funObj: Fun, fun: FunDecl): Env = copy(functionPtrs = functionPtrs.+((funObj, fun)))
+
 }
 
 object Env {
-  def empty = Env(Map(), Map(), Map(), new Obj())
+  def empty = Env(Map(), Map(), Map(), Set(), new Obj())
 }

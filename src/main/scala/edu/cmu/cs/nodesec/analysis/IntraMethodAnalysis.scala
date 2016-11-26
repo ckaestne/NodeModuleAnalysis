@@ -37,7 +37,7 @@ class IntraMethodAnalysis {
   def analyze(fun: FunDecl): Env = {
     val store: Map[Variable, Set[Value]] = Map[Variable, Set[Value]]() ++
       fun.args.map(a => (a, Set[Value](new Param(a.name)))) + (returnVariable -> Set(PrimitiveValue))
-    var env = Env(store, Map(), Map(), scopeObj)
+    var env = Env(store, Map(), Map(), Set(), scopeObj)
     analyze(env, fun.body)
   }
 
@@ -87,7 +87,8 @@ class IntraMethodAnalysis {
       val retVal = new MethodReturnValue(receiver, othis, oargs)
       enva.store(v, Set(retVal)).addCall(c, retVal)
     case f: FunDecl =>
-      env.store(f.v, Set(new Fun(f)))
+      val funObj = new Fun(f)
+      env.store(f.v, Set(funObj)).addFunctionPtr(funObj, f)
     case Store(v1, f, v2) =>
       val (receiver, newEnv) = env.lookup(v1)
       //      receiver.foreach(v => assert3(!v.isUnknown, s"store to field unknown object found ($v.$f)"))

@@ -58,8 +58,8 @@ class MethodCompositionTest extends FunSuite {
   test("fun arg") {
     reject(
       """
-        |function f(x) { return x; };
-        |function g(x) { return x; };
+        |function f(xf) { return xf; };
+        |function g(xg) { return xg; };
         |var x=f(g);
         |var y=x(require);
         |y();
@@ -67,6 +67,16 @@ class MethodCompositionTest extends FunSuite {
     )
   }
 
+  test("reject because context insensitive") {
+    reject(
+      """
+        |function f(xf) { return xf; };
+        |var x=f(require);
+        |var y=f(f);
+        |y(3);
+      """.stripMargin
+    )
+  }
 
 
   test("leftpad") {
