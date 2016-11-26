@@ -204,7 +204,9 @@ case class ConstExpr(a: String) extends Expr {
 case class ObjExpr(m: List[(String, Expr)]) extends Expr {
   def toVM: (Statement, Variable) = {
     val r = freshVar
-    var result: Statement = Constructor(r, new ConstString("Object"), Nil).copyPosition(this)
+    val objectConstVar = new AnonymousVariable()
+    val objectConstStmt = ConstAssignment(objectConstVar, "Object")
+    var result: Statement = Constructor(r, objectConstVar, Nil).copyPosition(this) ++ objectConstStmt
     for (field <- m) {
       val (s, v) = field._2.toVM
       result = Store(r, field._1, v).copyPosition(this) ++ s ++ result

@@ -52,13 +52,19 @@ case class DActual(fun: FunDecl, targetObj: Value, idx: Int, value: Value) exten
 case class DInvoke(fun: FunDecl, targetObj: Value, returnObj: Value) extends DRelation(fun) {
   def predicate = "invoke"
 
-  def terms = prefix + targetObj :: prefix + returnObj :: Nil
+  def terms = prefix :: prefix + targetObj :: prefix + returnObj :: Nil
 }
 
 case class DFunctionPtr(fun: FunDecl, obj: Value, targetFun: FunDecl) extends DRelation(fun) {
   def predicate = "functionptr"
 
   def terms = prefix + obj :: targetFun.uniqueId :: Nil
+}
+
+case class DScope(fun: FunDecl, scopeObj: Value) extends DRelation(fun) {
+  def predicate = "scope"
+
+  def terms = prefix :: prefix + scopeObj :: Nil
 }
 
 
@@ -80,11 +86,13 @@ class Datalog {
     val rule = new Rule(head.toDatalog(), body.map(_.toDatalog()): _*)
     jatalog.rule(rule)
     ruleStr += rule.toString + ".\n"
+    rule.toString
   }
 
   def loadRules(rules: String) = {
-    val statements = rules.split("\n").filter(_.trim.nonEmpty).map(Jatalog.prepareStatement)
-    statements.foreach(_.execute(jatalog))
+    val r = rules.split("\n").filter(_.trim.nonEmpty).filterNot(_ startsWith "%")
+    ruleStr += r.map(_ + "\n").mkString
+    r.map(Jatalog.prepareStatement).foreach(_.execute(jatalog))
   }
 
   def load(facts: List[DRelation]): Unit = facts.foreach(load)

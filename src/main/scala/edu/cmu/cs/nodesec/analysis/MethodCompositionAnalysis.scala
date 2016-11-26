@@ -31,7 +31,7 @@ object MethodCompositionAnalysis {
 
 
     def apply(d: Datalog, f: FunDecl, methodSummaries: Set[(FunDecl, Env)]) = {
-      d.rule(Expr("callToRequire", "X"), /*:-*/ Expr("invoke", "A", "X"), Expr("pt", "A", f.uniqueId + "param-require"))
+      println(d.rule(Expr("callToRequire", "X"), /*:-*/ Expr("invoke", "F", "A", "X"), Expr("pt", "A", f.uniqueId + "param-require")))
       val result = d.query("callToRequire", "X")
 
       result.map(
@@ -93,17 +93,37 @@ class MethodCompositionAnalysis {
 
     val datalog = new Datalog()
 
-    datalog.loadRules(
+    val rules =
       """
-        |pt(A, C) :- pt(A, B), pt(B, C).
-        |pt(R, O) :- invoke(T, R), functionptr(T, F), return(F, O).
-        |pt(R, O) :- invoke(T, R), pt(T, Q), functionptr(Q, F), return(F, O).
-        |pt(A, B) :- actual(T, Z, B), functionptr(T, F), formal(F, Z, A).
-        |pt(A, B) :- actual(T, Z, B), pt(T, Q), functionptr(Q, F), formal(F, Z, A).
+        |% transitive pointsTo relation
+        |pt(FROM, TO) :- pt(FROM, B), pt(B, TO).
+        |
+        |% resolved call graph edges
+        |% from origin OFUNID (with object representing the target TARGETOBJ and the resulting value RETVAL) to the target function TFUNID
+        |call(OFUNID,TARGETOBJ,RETVAL,TFUNID) :- invoke(OFUNID,TARGETOBJ,RETVAL), functionptr(TARGETOBJ, TFUNID).
+        |call(OFUNID,TARGETOBJ,RETVAL,TFUNID) :- invoke(OFUNID,TARGETOBJ,RETVAL), pt(TARGETOBJ, O), functionptr(O, TFUNID).
+        |
+        |% link returned value of function call to return-value of the target function
+        |pt(R, O) :- call(U1, U2, R, F), return(F, O).
+        |% link formal parameter to actual parameter
+        |pt(A, B) :- actual(T, Z, B), call(U1, T, X, F), formal(F, Z, A).
+        |
+        |% merge members pointing to the same obj:
         |pt(A, B) :- member(X, F, A), member(X, F, B).
         |pt(A, B) :- member(X, F, A), pt(X, Y), member(Y, F, B).
+        |
+        |% link scope to scope of closure
+        |pt(A, B):-scope(F2, A),call(F1,U1,U2,F2),scope(F1,B).
       """.stripMargin
-    )
+    datalog.loadRules(rules)
+
+//    > scope(f1, s1).
+//      > scope(f2, s2).
+//      > member(s1, f, require).
+//      > member(s2, f, unkn).
+//      > call(f1, f2).
+//      > pt(A, B):-scope(F2, A),call(F1,F2),scope(F1,B).
+//      > pt(A,B)?
 
 
     println(datalog.ruleStr + "%%%")
@@ -144,6 +164,9 @@ class MethodCompositionAnalysis {
 
     for ((obj, targetFun) <- env.functionPtrs)
       result ::= DFunctionPtr(fun, obj, targetFun)
+
+    result ::= DScope(fun, env.scopeObj)
+
 
     result
   }

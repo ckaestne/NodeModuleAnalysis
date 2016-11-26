@@ -17,18 +17,21 @@ case class Env(
   def lookupOpt(name: Variable): Option[Set[Value]] = store.get(name)
 
 
-  def lookup(v: Variable): (Set[Value], Env) = {
-    val r = lookupOpt(v)
-    if (r.isDefined) (r.get, this)
-    else {
-      assert(v.isInstanceOf[NamedVariable])
-      val name = v.asInstanceOf[NamedVariable].name
-      this.lookupFieldFromObj(scopeObj, name, () => new UnknownValue("$scope-" + name))
-    }
+  def lookup(v: Variable): (Set[Value], Env) = v match {
+    case NamedVariable(n) =>
+      //named variables are actually fields of the scope
+      this.lookupFieldFromObj(scopeObj, n, () => new UnknownValue("$scope-" + n))
+    case _: AnonymousVariable =>
+      (store(v), this)
   }
 
   //assignment killing previous assignments
-  def store(name: Variable, value: Set[Value]): Env = this.copy(store = store + (name -> value))
+  def store(name: Variable, value: Set[Value]): Env = name match {
+    case NamedVariable(n) =>
+      //named variables are actually fields of the scope
+      storeField(scopeObj, n, value)
+    case _: AnonymousVariable => this.copy(store = store + (name -> value))
+  }
 
   //    def kill(name: Variable): Env = this.copy(store = store - name)
 

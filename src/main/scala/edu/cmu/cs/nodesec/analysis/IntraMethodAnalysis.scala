@@ -35,9 +35,12 @@ class IntraMethodAnalysis {
   }
 
   def analyze(fun: FunDecl): Env = {
+    //initialize store with parameters and return value; assign all parameters and local variables as members of the scope
+    val params = fun.args.map(a => (a, Set[Value](new Param(a.name))))
     val store: Map[Variable, Set[Value]] = Map[Variable, Set[Value]]() ++
-      fun.args.map(a => (a, Set[Value](new Param(a.name)))) + (returnVariable -> Set(PrimitiveValue))
-    var env = Env(store, Map(), Map(), Set(), scopeObj)
+      params.toMap + (returnVariable -> Set(PrimitiveValue))
+    val members: Map[Obj, Map[String, Set[Value]]] = Map(scopeObj -> params.map(a => (a._1.name, a._2)).toMap)
+    val env = Env(store, members, Map(), Set(), scopeObj)
     analyze(env, fun.body)
   }
 
@@ -112,9 +115,6 @@ class IntraMethodAnalysis {
 
 
 }
-
-
-
 
 
 class Analysis3Exception(msg: String) extends RuntimeException(msg)

@@ -19,10 +19,6 @@ class AnonymousVariable() extends Variable {
   override def toString: String = "v-" + this.hashCode()
 }
 
-class ConstString(a: String) extends Variable {
-  override def toString: String = "\"" + a + "\""
-}
-
 
 trait Statement extends Positional {
   def ++(s: Statement) = s match {

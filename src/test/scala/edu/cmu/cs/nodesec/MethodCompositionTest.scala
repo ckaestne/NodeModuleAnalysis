@@ -84,9 +84,57 @@ class MethodCompositionTest extends FunSuite {
   }
 
   test("closure") {
-    reject("function foo() { require(); }")
+    reject("(function foo() { require(); })();")
+    reject("function foo() { require(); };")
   }
 
+  test("closure with variables") {
+    //would be okay
+    reject(
+      """
+        |var x = require;
+        |function foo() {
+        | x();
+        |}
+        |foo();
+      """.stripMargin)
+  }
+
+
+  test("overapproximation of closure") {
+    //would be okay
+    reject(
+      """
+        |var x = require;
+        |function foo() {
+        | var x = function bar(){};
+        | x();
+        |}
+        |foo();
+      """.stripMargin)
+  }
+
+  test("direction of closure") {
+    //make sure inner local variables do not leak outside
+    pass(
+      """
+        |var x = function bar(){};;
+        |function foo() {
+        | var x = require;
+        |}
+        |foo();
+        |x();
+      """.stripMargin)
+    reject(
+      """
+        |var x = function bar(){};;
+        |function foo() {
+        | x = require;
+        |}
+        |foo();
+        |x();
+      """.stripMargin)
+  }
 
   import MethodCompositionAnalysis._
 
