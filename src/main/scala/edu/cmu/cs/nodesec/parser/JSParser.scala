@@ -5,18 +5,18 @@ import scala.util.parsing.combinator._
 
 class JSParser extends RegexParsers {
 
-  def Program: Parser[CompoundStmt] = Element.* ^^ CompoundStmt
+  def Program: Parser[CompoundStmt] = positioned(Element.* ^^ CompoundStmt)
 
 
   def Element: Parser[Stmt] =
-    FunctionExpression ^^ ExpressionStmt |
+    positioned(FunctionExpression ^^ ExpressionStmt) |
       Statement
 
   def ParameterList: Parser[List[Id]] = repsep(Identifier, ",")
 
-  def CompoundStatement: Parser[Stmt] = "{" ~> rep(Statement) <~ "}" ^^ CompoundStmt
+  def CompoundStatement: Parser[Stmt] = positioned("{" ~> rep(Statement) <~ "}" ^^ CompoundStmt)
 
-  def Statement: Parser[Stmt] =
+  def Statement: Parser[Stmt] = positioned(
     ";" ^^^ EmptyStmt() |
       "if" ~> Condition ~ Statement ~ opt("else" ~> Statement) ^^ ifStmt |
       "while" ~> Condition ~ Statement ^^ whileStmt |
@@ -28,7 +28,7 @@ class JSParser extends RegexParsers {
       "with" ~ "(" ~ Expression ~ ")" ~ Statement ^^ NotImplStmt |
       "return" ~> Expression.? <~ ";" ^^ ReturnStmt |
       CompoundStatement |
-      VariablesOrExpression <~ ";"
+      VariablesOrExpression <~ ";")
 
 
   def Condition = "(" ~> Expression <~ ")"
@@ -41,7 +41,7 @@ class JSParser extends RegexParsers {
 
   def Variable: Parser[VarDef] = Identifier ~ opt("=" ~> AssignmentExpression) ^^ varDef
 
-  def Expression: Parser[Expr] = AssignmentExpression ~ opt("," ~ Expression) ^^ binExpr
+  def Expression: Parser[Expr] = positioned(AssignmentExpression ~ opt("," ~ Expression) ^^ binExpr)
 
   def AssignmentExpression: Parser[Expr] = ConditionalExpression ~ opt(AssignmentOperator ~ AssignmentExpression) ^^ assignExpr
 
@@ -82,7 +82,7 @@ class JSParser extends RegexParsers {
 
   def Args = "(" ~ repsep(AssignmentExpression, ",") <~ ")"
 
-  def MemberExpression: Parser[Expr] =
+  def MemberExpression: Parser[Expr] = positioned(
     FunctionExpression |
       PrimaryExpression ~ (rep(
         Args |
@@ -90,9 +90,9 @@ class JSParser extends RegexParsers {
           "[" ~ Expression <~ "]"
       ) ^^ {
         _.reverse
-      }) ^^ memberExpr
+      }) ^^ memberExpr)
 
-  def FunctionExpression: Parser[Expr] = (("function" ~> opt(Identifier) <~ "(") ~ ParameterList <~ ")") ~ CompoundStatement ^^ funExpr
+  def FunctionExpression: Parser[Expr] = positioned((("function" ~> opt(Identifier) <~ "(") ~ ParameterList <~ ")") ~ CompoundStatement ^^ funExpr)
 
   def PrimaryExpression: Parser[Expr] =
     "(" ~> Expression <~ ")" |
@@ -108,7 +108,7 @@ class JSParser extends RegexParsers {
 
   def ArrayLiteral: Parser[Expr] = "[" ~ repsep(rep(",") ~ AssignmentExpression, ",") ~ "]" ^^ NotImplExpr
 
-  def ObjectLiteral: Parser[ObjExpr] = "{" ~> repsep(PropertyAssignment, ",") <~ opt(",") ~ "}" ^^ ObjExpr
+  def ObjectLiteral: Parser[ObjExpr] = positioned("{" ~> repsep(PropertyAssignment, ",") <~ opt(",") ~ "}" ^^ ObjExpr)
 
   def PropertyAssignment: Parser[(String,Expr)] =
     (PropertyName <~ ":") ~ AssignmentExpression ^^ {case a~b=>(a,b)}
@@ -122,9 +122,9 @@ class JSParser extends RegexParsers {
       IntegerLiteral ^^ {_.a}
 
 
-  def Identifier: Parser[Id] = """[a-zA-Z_][a-zA-Z0-9_]*""".r ^^ Id
+  def Identifier: Parser[Id] = positioned("""[a-zA-Z_][a-zA-Z0-9_]*""".r ^^ Id)
 
-  def IntegerLiteral: Parser[Lit] = """[0-9]+""".r ^^ Lit //TODO floating point
+  def IntegerLiteral: Parser[Lit] = positioned("""[0-9]+""".r ^^ Lit )//TODO floating point
 
   def EqualityOperator = "===" | "!==" | "==" | "!="
 
@@ -132,9 +132,9 @@ class JSParser extends RegexParsers {
     "*=" | "/=" | "%=" | "+=" | "-=" | "<<=" | ">>=" | ">>>=" | "&=" | "^=" | "|=" | "="
 
   def StringLiteral = //TODO fix
-    "\"[^\"]*\"".r ^^ Lit |
+    positioned("\"[^\"]*\"".r ^^ Lit |
       "'[^']*'".r ^^ Lit   |
-      "/[^/]*/g?".r ^^ Lit
+      "/[^/]*/g?".r ^^ Lit)
 
 
   def assignExpr(a: Expr ~ Option[String ~ Expr]) = a match {
@@ -174,9 +174,9 @@ class JSParser extends RegexParsers {
     case a ~ (h :: r) =>
       val target = memberExpr(new ~(a, r))
       h match {
-        case "." ~ e => FieldAcc(target, e.asInstanceOf[Id])
+        case "." ~ (e:Id) => FieldAcc(target, e).setPos(e.pos)
         case "[" ~ e => NotImplExpr(h)
-        case "(" ~ e => FunCall(target, e.asInstanceOf[List[Expr]])
+        case "(" ~ e => FunCall(target, e.asInstanceOf[List[Expr]]).setPos(target.pos)
       }
   }
 

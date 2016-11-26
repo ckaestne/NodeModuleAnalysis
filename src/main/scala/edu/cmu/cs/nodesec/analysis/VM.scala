@@ -1,5 +1,7 @@
 package edu.cmu.cs.nodesec.analysis
 
+import scala.util.parsing.input.Positional
+
 object VariableHelper {
   def freshVar = new AnonymousVariable()
 
@@ -22,7 +24,7 @@ class ConstString(a: String) extends Variable {
 }
 
 
-trait Statement {
+trait Statement extends Positional {
   def ++(s: Statement) = s match {
     case Sequence(i) => Sequence(this :: i)
     case _ => Sequence(List(this, s))
@@ -34,6 +36,12 @@ trait Statement {
     case that: Statement => this eq that
     case _ => false
   }
+
+  def copyPosition(p: Positional) = {
+    this.setPos(p.pos)
+    this
+  }
+
 
 }
 
