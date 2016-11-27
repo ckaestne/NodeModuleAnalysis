@@ -27,10 +27,14 @@ object AnalysisHelper {
     //returning a version of the global file to which the provided function declaration
     //is added and then called
     val vm = globalsVM
-    vm.copy(body =
+    val newBody =
       Call(new AnonymousVariable(), f.v, VariableHelper.thisVar,
         List(LocalVariable("module"), LocalVariable("require"), LocalVariable("exports"))) ++
-        f ++ vm.body)
+        f ++ vm.body
+
+    new FunDecl(vm.v, vm.args, vm.localVariables, newBody) {
+      override lazy val uniqueId = "global#"
+    }
   }
 
   val returnVariable = LocalVariable("$return")

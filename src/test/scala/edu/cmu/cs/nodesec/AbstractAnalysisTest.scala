@@ -37,6 +37,13 @@ abstract class AbstractAnalysisTest extends FunSuite {
     assert(policyViolations.isEmpty, "policy violation found:\n" + policyViolations.map(_.render).mkString("\n"))
   }
 
+  def rejectFile(file: String, policies: Policy*): Unit = {
+    assert(policies.nonEmpty, "no policies provided")
+    val vm = parseFile(file)
+    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policies.reduce(_ + _), true)
+    assert(policyViolations.nonEmpty, "policy violation expected, but not found")
+  }
+
 
   def parse(prog: String) = {
     val parsed = p.parseAll(p.Program, prog)

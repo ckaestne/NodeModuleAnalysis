@@ -3,7 +3,6 @@ var module = {};
 module.exports = {};
 var exports = module.exports;
 
-var global={};
 global.eval = function(x) {};
 global.arguments = {};
 global.console = {};

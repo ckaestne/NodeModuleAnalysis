@@ -1,8 +1,6 @@
 package edu.cmu.cs.nodesec
 
 import edu.cmu.cs.nodesec.analysis._
-import edu.cmu.cs.nodesec.parser.JSParser
-import org.scalatest.FunSuite
 
 
 /**
@@ -10,20 +8,31 @@ import org.scalatest.FunSuite
   */
 class FileAnalysisTest extends AbstractAnalysisTest {
 
-//  test("parse test") {
-//    execute("src/test/resources/test.js")
-//  }
-//  test("parse leftpad") {
-//    execute("src/test/resources/leftpad.js")
-//  }
-//  ignore("parse wordwrap") {
-//    execute("src/test/resources/wordwrap.js")
-//  }
+  import MethodCompositionAnalysis._
+
+  test("test.js") {
+    passFile("src/test/resources/test.js", noAlwaysUnresolvedFunctionCalls +
+      noForbiddenGlobalObjects +
+      noPrototype +
+      noWriteToClosure +
+      noCallToRequire)
+  }
+  test("parse leftpad") {
+    //TODO handle toString call
+    passFile("src/test/resources/leftpad.js", noCallToRequire + noWriteToClosure + noPrototype + noForbiddenGlobalObjects)
+  }
+  //  test("parse wordwrap") {
+  //    passFile("src/test/resources/wordwrap.js",allPolicies)
+  //  }
 //  ignore("parse gulp") {
-//    execute("src/test/resources/gulp.js")
+//    passFile("src/test/resources/gulp.js", allPolicies)
 //  }
-//
-//  test("parse demo") {
-//    execute("src/test/resources/demo.js")
-//  }
+  //
+  test("parse demo") {
+    rejectFile("src/test/resources/demo.js", allPolicies)
+  }
+
+  test("parse albabroc") {
+    passFile("src/test/resources/albabroc.js", noCallToRequire + noWriteToClosure + noPrototype + noForbiddenGlobalObjects)
+  }
 }

@@ -38,7 +38,8 @@ class IntraMethodAnalysis {
     val closureScopeObj: Obj = Param("$closure")
     val localScopeObj: Obj = Param("$local")
     val params = fun.args.map(a => (a, Set[Value](new Param(a.name))))
-    val locals = fun.localVariables.map(a => (a, Set[Value](PrimitiveValue)))
+    val locals = fun.localVariables.map(a => (a, Set[Value](PrimitiveValue))) :+
+      ((LocalVariable("global"), Set[Value](closureScopeObj)))//`global` is a local variable pointing to the global scope
     val store: Map[Variable, Set[Value]] = Map[Variable, Set[Value]]() ++
       (params ++ locals).toMap + (returnVariable -> Set(PrimitiveValue))
     val members: Map[Obj, Map[String, Set[Value]]] =

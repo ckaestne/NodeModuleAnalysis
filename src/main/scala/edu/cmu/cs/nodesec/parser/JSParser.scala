@@ -128,7 +128,7 @@ class JSParser extends RegexParsers {
       IntegerLiteral ^^ {_.a}
 
 
-  def Identifier: Parser[Id] = positioned("""[a-zA-Z_][a-zA-Z0-9_]*""".r ^^ Id)
+  def Identifier: Parser[Id] = positioned("""[a-zA-Z_$][a-zA-Z0-9_$]*""".r ^^ Id)
 
   def IntegerLiteral: Parser[Lit] = positioned("""[0-9]+""".r ^^ Lit )//TODO floating point
 

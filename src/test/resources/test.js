@@ -1,5 +1,7 @@
+console.log("foo");
 var x = require;
-x("foo");
+var y = function(){};
+y("foo");
 
 //function T(){ this.foo = function(){ return 0; }; }; //dT , pT
 //var t = new T(); //a1
