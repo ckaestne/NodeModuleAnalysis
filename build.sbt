@@ -7,3 +7,5 @@ scalaVersion := "2.12.0"
 libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "1.0.4"
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.1" % "test"
+
+libraryDependencies += "org.spire-math" % "jawn-parser_2.12" % "0.10.4"

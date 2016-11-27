@@ -40,7 +40,7 @@ object NPMPkg extends App {
 
     for (jsFile <- jsFiles) {
       println(jsFile)
-      if (Process(s"node ../esprint/prettyprint.js $jsFile $jsFile.pp", workingDir).! != 0)
+      if (Process(s"node ../esprint/prettyprint.js $jsFile", workingDir).! != 0)
         throw new RuntimeException(s"pretty printing failed ($jsFile)\n")
     }
 

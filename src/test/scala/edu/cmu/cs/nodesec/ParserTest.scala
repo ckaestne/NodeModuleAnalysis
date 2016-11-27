@@ -1,6 +1,5 @@
 package edu.cmu.cs.nodesec
 
-import edu.cmu.cs.nodesec.analysis.{IntraMethodAnalysis, Sequence}
 import edu.cmu.cs.nodesec.parser.JSParser
 import org.scalatest.FunSuite
 
@@ -33,6 +32,7 @@ class ParserTest extends FunSuite {
     ps(p.parseAll(p.Expression, "a.x1.x2.x3"))
     ps(p.parseAll(p.Expression, "a(1).foo(2).bar.bar2"))
     ps(p.parseAll(p.Program, "function foo() {} function foo() {}"))
+    ps(p.parseAll(p.Expression, "(function foo(x) {}())"))
     //    println(p.parseAll(p.word, "foo bar"))
   }
 
