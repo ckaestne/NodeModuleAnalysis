@@ -30,23 +30,14 @@ class IntraMethodAnalysis {
   type Field = String
 
 
-  def analyzeScript(fun: FunctionBody, withGlobals: Boolean = false): Env =
-    analyze(wrapScript(fun), withGlobals)
+  def analyzeScript(fun: FunctionBody): Env =
+    analyze(wrapScript(fun))
 
-  def emptyInit(): (Obj, String => Set[Value]) = (Param("$closure"), (a: String) => Set[Value](new Param(a)))
-
-  def globalsInit(): (Obj, String => Set[Value]) = {
-    val globalEnv = AnalysisHelper.globalsSummary
-    (globalEnv.lookup(LocalVariable("global"))._1.toList.head.asInstanceOf[Obj],
-      (a: String) => globalEnv.lookup(LocalVariable(a))._1)
-  }
-
-  def analyze(fun: FunDecl, withGlobals: Boolean = false): Env = {
-    val initialObj = if (withGlobals) globalsInit() else emptyInit()
+  def analyze(fun: FunDecl): Env = {
     //initialize store with parameters and return value; assign all parameters and local variables as members of the scope
-    val closureScopeObj: Obj = initialObj._1
+    val closureScopeObj: Obj = Param("$closure")
     val localScopeObj: Obj = Param("$local")
-    val params = fun.args.map(a => (a, initialObj._2(a.name)))
+    val params = fun.args.map(a => (a, Set[Value](new Param(a.name))))
     val locals = fun.localVariables.map(a => (a, Set[Value](PrimitiveValue)))
     val store: Map[Variable, Set[Value]] = Map[Variable, Set[Value]]() ++
       (params ++ locals).toMap + (returnVariable -> Set(PrimitiveValue))

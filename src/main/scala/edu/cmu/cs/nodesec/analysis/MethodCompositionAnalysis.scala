@@ -33,7 +33,7 @@ object MethodCompositionAnalysis {
 
     def apply(d: Datalog, f: FunDecl, methodSummaries: Set[(FunDecl, Env)]) = {
       println(d.rule(Expr("callToRequire", "X", "REQOBJ"), /*:-*/ Expr("invoke", "F", "A", "X"), Expr("pt", "A", "REQOBJ")))
-      val result = d.query("callToRequire", "X", "\"" + f.uniqueId + "param-require")
+      val result = d.query("callToRequire", "X", "\"" + f.uniqueId + "param-require\"")
 
       result.map(
         r => PolicyViolation("Potential call to 'require' found", getFunctionCallPositionByRetObj(r("X"), methodSummaries))
@@ -76,7 +76,7 @@ object MethodCompositionAnalysis {
       datalog.loadRules("readFromGlobal(G,F) :- load(G, F, U2).\n" +
         "readFromGlobal(G,F) :- pt(X, G), load(X, F, U2)."
       )
-      val result = datalog.query("readFromGlobal", "\"" + mainFun.uniqueId + globalObj, "F")
+      val result = datalog.query("readFromGlobal", "\"" + mainFun.uniqueId + globalObj+"\"", "F")
 
       result.map(
         r => PolicyViolation(s"Read from global object found (${r("F")})", NoPosition)
@@ -105,7 +105,7 @@ object MethodCompositionAnalysis {
         "forbiddenGlobal(\"eval\"). \n forbiddenGlobal(\"arguments\").\n" +
         "accessToForbiddenGlobals(G, F) :- readFromGlobal(G, F), forbiddenGlobal(F)."
       )
-      val result = datalog.query("accessToForbiddenGlobals", '"' + mainFun.uniqueId + globalObj, "F")
+      val result = datalog.query("accessToForbiddenGlobals", "\"" + mainFun.uniqueId + globalObj+"\"", "F")
 
       result.map(
         r => PolicyViolation(s"Access to forbidden global object `${r("F")}` found", NoPosition)
@@ -150,21 +150,21 @@ class MethodCompositionAnalysis {
   }
 
 
-  def analyzeScript(p: FunctionBody, policy: Policy, withGlobals: Boolean = false): Seq[PolicyViolation] =
-    analyze(AnalysisHelper.wrapScript(p), policy, withGlobals)
+  def analyzeScript(p: FunctionBody, policy: Policy, withGlobals: Boolean = false): Seq[PolicyViolation] = {
+    val fun = AnalysisHelper.wrapScript(p)
+    analyze(if (withGlobals) AnalysisHelper.wrapWithGlobals(fun) else fun, policy, Some(fun))
+  }
 
-  def analyze(mainFun: FunDecl, policy: Policy, withGlobals: Boolean = false): Seq[PolicyViolation] = {
-    val funDecls = collectFunDecls(mainFun)
+  def analyze(fun: FunDecl, policy: Policy, mainFun: Option[FunDecl]=None): Seq[PolicyViolation] = {
+    val funDecls = collectFunDecls(fun)
 
     val summaries = for (funDecl <- funDecls)
       yield (funDecl, new IntraMethodAnalysis().analyze(funDecl))
-    val summariesWithGlobals =
-      if (withGlobals) summaries + ((AnalysisHelper.globalsVM, AnalysisHelper.globalsSummary)) else summaries
 
-    val result = compose(summariesWithGlobals)
+    val result = compose(summaries)
 
 
-    policy(result, mainFun, summariesWithGlobals)
+    policy(result, mainFun.getOrElse(fun), summaries)
   }
 
 

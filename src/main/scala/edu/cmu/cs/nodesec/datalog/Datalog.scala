@@ -113,5 +113,6 @@ class Datalog {
   def load(fact: DRelation): Unit = jatalog.fact(fact.toDatalogExpr)
 
   def query(predicate: String, terms: String*): Seq[Map[String, String]] =
-    jatalog.query(new DLExpr(predicate, terms: _*)).asScala.toSeq.map(Map() ++ _.asScala)
+    jatalog.query(new DLExpr(predicate, terms.map(t => if (t startsWith "\"") t.dropRight(1) else t).asJava)).
+      asScala.toSeq.map(_.asScala.toMap.mapValues(s => if (s startsWith "\"") s + "\"" else s))
 }
