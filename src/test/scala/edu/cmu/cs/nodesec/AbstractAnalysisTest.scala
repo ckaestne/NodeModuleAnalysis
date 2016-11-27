@@ -33,7 +33,7 @@ abstract class AbstractAnalysisTest extends FunSuite {
   def passFile(file: String, policies: Policy*): Unit = {
     assert(policies.nonEmpty, "no policies provided")
     val vm = parseFile(file)
-    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policies.reduce(_ + _))
+    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policies.reduce(_ + _), true)
     assert(policyViolations.isEmpty, "policy violation found:\n" + policyViolations.map(_.render).mkString("\n"))
   }
 

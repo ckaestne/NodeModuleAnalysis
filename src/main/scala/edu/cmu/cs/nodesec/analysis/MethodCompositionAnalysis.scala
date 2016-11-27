@@ -33,7 +33,7 @@ object MethodCompositionAnalysis {
 
     def apply(d: Datalog, f: FunDecl, methodSummaries: Set[(FunDecl, Env)]) = {
       println(d.rule(Expr("callToRequire", "X", "REQOBJ"), /*:-*/ Expr("invoke", "F", "A", "X"), Expr("pt", "A", "REQOBJ")))
-      val result = d.query("callToRequire", "X", f.uniqueId + "param-require")
+      val result = d.query("callToRequire", "X", "\"" + f.uniqueId + "param-require")
 
       result.map(
         r => PolicyViolation("Potential call to 'require' found", getFunctionCallPositionByRetObj(r("X"), methodSummaries))
@@ -59,8 +59,8 @@ object MethodCompositionAnalysis {
     override def apply(datalog: Datalog, mainFun: FunDecl, methodSummaries: Set[(FunDecl, Env)]): Seq[PolicyViolation] = {
       datalog.loadRules("reaches(A,B) :- member(A,F,B).\n" +
         "reaches(A,B) :- member(A,F,C), reaches(C,B).\n" +
-        "writeToClosure(W,F) :- store(W, F, U2), reaches(O, W), scope(U3, closure, O).\n" +
-        "writeToClosure(W,F) :- store(W, F, U2), scope(U3, closure, W)."
+        "writeToClosure(W,F) :- store(W, F, U2), reaches(O, W), scope(U3, \"closure\", O).\n" +
+        "writeToClosure(W,F) :- store(W, F, U2), scope(U3, \"closure\", W)."
       )
       val result = datalog.query("writeToClosure", "X", "F")
 
@@ -76,7 +76,7 @@ object MethodCompositionAnalysis {
       datalog.loadRules("readFromGlobal(G,F) :- load(G, F, U2).\n" +
         "readFromGlobal(G,F) :- pt(X, G), load(X, F, U2)."
       )
-      val result = datalog.query("readFromGlobal", mainFun.uniqueId + globalObj, "F")
+      val result = datalog.query("readFromGlobal", "\"" + mainFun.uniqueId + globalObj, "F")
 
       result.map(
         r => PolicyViolation(s"Read from global object found (${r("F")})", NoPosition)
@@ -86,8 +86,8 @@ object MethodCompositionAnalysis {
 
   val noPrototype = new Policy {
     override def apply(datalog: Datalog, mainFun: FunDecl, methodSummaries: Set[(FunDecl, Env)]): Seq[PolicyViolation] = {
-      datalog.loadRules("accessToPrototype(X,Y) :- member(X, prototype, Y).\n" //+
-        //"accessToPrototype(X,Y) :- member(X, __prototype__, Y)."
+      datalog.loadRules("accessToPrototype(X,Y) :- member(X, \"prototype\", Y).\n" +
+        "accessToPrototype(X,Y) :- member(X, \"__prototype__\", Y)."
       )
       val result = datalog.query("accessToPrototype", "X", "Y")
 
@@ -102,10 +102,10 @@ object MethodCompositionAnalysis {
       val globalObj = methodSummaries.find(_._1 == mainFun).get._2.closureObj
       datalog.loadRules("readFromGlobal(G,F) :- load(G, F, U2).\n" +
         "readFromGlobal(G,F) :- pt(X, G), load(X, F, U2).\n" +
-        "forbiddenGlobal(eval). \n forbiddenGlobal(arguments).\n" +
+        "forbiddenGlobal(\"eval\"). \n forbiddenGlobal(\"arguments\").\n" +
         "accessToForbiddenGlobals(G, F) :- readFromGlobal(G, F), forbiddenGlobal(F)."
       )
-      val result = datalog.query("accessToForbiddenGlobals", mainFun.uniqueId + globalObj, "F")
+      val result = datalog.query("accessToForbiddenGlobals", '"' + mainFun.uniqueId + globalObj, "F")
 
       result.map(
         r => PolicyViolation(s"Access to forbidden global object `${r("F")}` found", NoPosition)
@@ -150,19 +150,21 @@ class MethodCompositionAnalysis {
   }
 
 
-  def analyzeScript(p: FunctionBody, policy: Policy): Seq[PolicyViolation] =
-    analyze(AnalysisHelper.wrapScript(p), policy)
+  def analyzeScript(p: FunctionBody, policy: Policy, withGlobals: Boolean = false): Seq[PolicyViolation] =
+    analyze(AnalysisHelper.wrapScript(p), policy, withGlobals)
 
-  def analyze(mainFun: FunDecl, policy: Policy): Seq[PolicyViolation] = {
+  def analyze(mainFun: FunDecl, policy: Policy, withGlobals: Boolean = false): Seq[PolicyViolation] = {
     val funDecls = collectFunDecls(mainFun)
 
     val summaries = for (funDecl <- funDecls)
       yield (funDecl, new IntraMethodAnalysis().analyze(funDecl))
+    val summariesWithGlobals =
+      if (withGlobals) summaries + ((AnalysisHelper.globalsVM, AnalysisHelper.globalsSummary)) else summaries
 
-    val result = compose(summaries)
+    val result = compose(summariesWithGlobals)
 
 
-    policy(result, mainFun, summaries)
+    policy(result, mainFun, summariesWithGlobals)
   }
 
 
@@ -199,16 +201,15 @@ class MethodCompositionAnalysis {
         |
         |% link scope to scope of closure
         |parentscope(OUTER, INNER) :- functiondecl(OUTER, U, INNER).
-        |pt(A, B):-scope(F2, closure, A),parentscope(F1,F2),scope(F1, closure, B).
-        |pt(A, B):-scope(F2, closure, A),parentscope(F1,F2),scope(F1, local, B).
+        |pt(A, B):-scope(F2, "closure", A),parentscope(F1,F2),scope(F1, "closure", B).
+        |pt(A, B):-scope(F2, "closure", A),parentscope(F1,F2),scope(F1, "local", B).
         |
         |%    TODO: the following would allow writes to be propagated back, but makes everything absolutely
         |%    conservative by merging local and global scopes of all function that contain any other function decl.
         |%    for now we rather have a policy against writing to outer environments
         |% scope needs to be shared both directions, as inner functions can update values in outer scopes
-        |    pt(B, A):-scope(F2, closure, A),parentscope(F1,F2),scope(F1, closure, B).
-        |      pt(B, A):-scope(F2, closure, A),parentscope(F1,F2),scope(F1, local, B).
-        |
+        |pt(B, A):-scope(F2, "closure", A),parentscope(F1,F2),scope(F1, "closure", B).
+        |pt(B, A):-scope(F2, "closure", A),parentscope(F1,F2),scope(F1, "local", B).
         |      """.stripMargin
     datalog.loadRules(rules)
 

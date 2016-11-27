@@ -1,0 +1,27 @@
+package edu.cmu.cs.nodesec.analysis
+
+import java.io.FileReader
+
+import edu.cmu.cs.nodesec.parser.{FunExpr, FunctionBody, Id, JSParser}
+
+/**
+  * Created by ckaestne on 11/26/16.
+  */
+object AnalysisHelper {
+
+  val globalJsFile = "src/main/resources/global.js"
+
+  lazy val globalsVM = {
+    val p=new JSParser()
+    val parsed = p.parseAll(p.Program, new FileReader(globalJsFile))
+    assert(parsed.successful, "parsing globals failed: "+parsed)
+    FunExpr(None, Nil, parsed.get).toVM()
+  }
+
+  lazy val globalsSummary = new IntraMethodAnalysis().analyze(globalsVM)
+
+  def wrapScript(p: FunctionBody): FunDecl =
+    FunExpr(None, List(Id("module"), Id("require"), Id("exports")), p).toVM()
+
+  val returnVariable = LocalVariable("$return")
+}

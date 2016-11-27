@@ -1,6 +1,6 @@
 package edu.cmu.cs.nodesec.analysis
 
-import edu.cmu.cs.nodesec.parser.{FunExpr, FunctionBody, Id}
+import edu.cmu.cs.nodesec.parser.FunctionBody
 
 /**
   * Created by ckaestne on 11/24/16.
@@ -30,14 +30,23 @@ class IntraMethodAnalysis {
   type Field = String
 
 
-  def analyzeScript(fun: FunctionBody): Env =
-    analyze(wrapScript(fun))
+  def analyzeScript(fun: FunctionBody, withGlobals: Boolean = false): Env =
+    analyze(wrapScript(fun), withGlobals)
 
-  def analyze(fun: FunDecl): Env = {
+  def emptyInit(): (Obj, String => Set[Value]) = (Param("$closure"), (a: String) => Set[Value](new Param(a)))
+
+  def globalsInit(): (Obj, String => Set[Value]) = {
+    val globalEnv = AnalysisHelper.globalsSummary
+    (globalEnv.lookup(LocalVariable("global"))._1.toList.head.asInstanceOf[Obj],
+      (a: String) => globalEnv.lookup(LocalVariable(a))._1)
+  }
+
+  def analyze(fun: FunDecl, withGlobals: Boolean = false): Env = {
+    val initialObj = if (withGlobals) globalsInit() else emptyInit()
     //initialize store with parameters and return value; assign all parameters and local variables as members of the scope
-    val closureScopeObj: Obj = Param("$closure")
+    val closureScopeObj: Obj = initialObj._1
     val localScopeObj: Obj = Param("$local")
-    val params = fun.args.map(a => (a, Set[Value](new Param(a.name))))
+    val params = fun.args.map(a => (a, initialObj._2(a.name)))
     val locals = fun.localVariables.map(a => (a, Set[Value](PrimitiveValue)))
     val store: Map[Variable, Set[Value]] = Map[Variable, Set[Value]]() ++
       (params ++ locals).toMap + (returnVariable -> Set(PrimitiveValue))
@@ -122,14 +131,6 @@ class IntraMethodAnalysis {
 
 class Analysis3Exception(msg: String) extends RuntimeException(msg)
 
-
-object AnalysisHelper {
-
-  def wrapScript(p: FunctionBody): FunDecl =
-    FunExpr(None, List(Id("module"), Id("require"), Id("exports")), p).toVM()
-
-  val returnVariable = LocalVariable("$return")
-}
 
 object NameHelper {
   var objectCounter = 0

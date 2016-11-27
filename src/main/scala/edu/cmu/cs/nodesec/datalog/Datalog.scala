@@ -19,9 +19,9 @@ sealed abstract class DRelation(fun: FunDecl) {
 
   def terms: List[String]
 
-  def toDatalogExpr: DLExpr = new DLExpr(predicate, terms.asJava)
+  def toDatalogExpr: DLExpr = new DLExpr(predicate, terms.map('"' + _).asJava)
 
-  override def toString: String = predicate + terms.mkString("(", ", ", ").")
+  override def toString: String = predicate + terms.map('"' + _ + '"').mkString("(", ", ", ").")
 }
 
 case class DFormal(fun: FunDecl, idx: Int, obj: Value) extends DRelation(fun) {
