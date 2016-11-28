@@ -37,6 +37,7 @@ class AnonymousVariable() extends Variable {
 
 trait Statement extends Positional {
   def ++(s: Statement) = s match {
+    case EmptyStatement => this
     case Sequence(i) => Sequence(this :: i)
     case _ => Sequence(List(this, s))
   }
@@ -58,12 +59,17 @@ trait Statement extends Positional {
 
 case class Sequence(s: List[Statement]) extends Statement {
   override def ++(that: Statement) = that match {
+    case EmptyStatement => this
     case Sequence(i) => Sequence(s ++ i)
     case _ => Sequence(s :+ that)
   }
 
   override def ++(that: Sequence) = Sequence(this.s ++ that.s)
 
+}
+
+object EmptyStatement extends Statement {
+  override def ++(s: Statement) = s
 }
 
 case class Assignment(l: Variable, r: Variable) extends Statement

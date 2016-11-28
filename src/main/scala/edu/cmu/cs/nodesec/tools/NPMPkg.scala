@@ -5,7 +5,7 @@ import java.io._
 import edu.cmu.cs.nodesec.analysis.AnalysisHelper._
 import edu.cmu.cs.nodesec.analysis.MethodCompositionAnalysis.noCallToRequire
 import edu.cmu.cs.nodesec.analysis.{AnalysisHelper, MethodCompositionAnalysis}
-import edu.cmu.cs.nodesec.parser.JSParser
+import edu.cmu.cs.nodesec.parser.{JSASTParser, JSParser}
 
 import scala.sys.process._
 
@@ -13,7 +13,7 @@ import scala.sys.process._
   * Created by ckaestne on 11/27/16.
   */
 object NPMPkg extends App {
-  val pkg= "angulartics-webtrends-analytics-1.0.7.tgz"
+  val pkg= "angular-frontload-data-3.0.0.tgz"
 
 
   val thisDir = new File(".")
@@ -44,12 +44,10 @@ object NPMPkg extends App {
         throw new RuntimeException(s"pretty printing failed ($jsFile)\n")
     }
 
-    val p = new JSParser()
+    val p = new JSASTParser()
     var asts = for (jsFile <- jsFiles) yield {
-      val parsed = p.parseAll(p.Program, new FileReader(new File(workingDir, jsFile + ".pp")))
-      println(parsed)
-      assert(parsed.successful, parsed)
-      (jsFile, parsed.get)
+      val parsed = p.parse(new File(workingDir, jsFile + ".ast"))
+      (jsFile, parsed)
     }
 
     var vms = for ((jsFile, ast) <- asts) yield {

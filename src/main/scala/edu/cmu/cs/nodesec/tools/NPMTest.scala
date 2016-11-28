@@ -20,8 +20,8 @@ object NPMTest extends App {
   val workingDir = new File(thisDir, "workingDir")
   val log = new FileWriter(new File(dir, "log"))
 
-//  val archives = dir.listFiles().filter(_.getName endsWith ".tgz")
-  val archives = List(new File(dir, "angulartics-webtrends-analytics-1.0.7.tgz"))
+  val archives = dir.listFiles().filter(_.getName endsWith ".tgz")
+  //  val archives = List(new File(dir, "angulartics-webtrends-analytics-1.0.7.tgz"))
   archives.foreach(processPackage)
 
   log.close()
@@ -49,10 +49,16 @@ object NPMTest extends App {
 
     val p = new JSParser()
     var asts = for (jsFile <- jsFiles) yield {
-      val parsed = p.parseAll(p.Program, new FileReader(new File(workingDir, jsFile + ".pp")))
-      if (!parsed.successful)
-        return log.append(s"parsing failed ($jsFile)\n")
-      (jsFile, parsed.get)
+      try {
+        val parsed = p.parseAll(p.Program, new FileReader(new File(workingDir, jsFile + ".pp")))
+        if (!parsed.successful)
+          return log.append(s"parsing failed ($jsFile)\n")
+        (jsFile, parsed.get)
+      } catch {
+        case e: scala.NotImplementedError => return log.append(s"parsing failed ($jsFile)\n")
+        case e: AssertionError => return log.append(s"parsing failed ($jsFile)\n")
+      }
+
     }
 
     var vms = for ((jsFile, ast) <- asts) yield {
@@ -60,15 +66,22 @@ object NPMTest extends App {
         (jsFile, wrapScript(ast))
       } catch {
         case e: scala.NotImplementedError => return log.append(s"toVM failed ($jsFile)\n")
+        case e: AssertionError => return log.append(s"toVM failed ($jsFile)\n")
       }
     }
 
 
     for ((jsFile, fun) <- vms) {
-      val policyViolations = new MethodCompositionAnalysis().
-        analyze(AnalysisHelper.wrapWithGlobals(fun), noCallToRequire, Some(fun))
-      if (policyViolations.nonEmpty)
-        return log.append(s"policy violation found ($jsFile)\n")
+      try {
+        val policyViolations = new MethodCompositionAnalysis().
+          analyze(AnalysisHelper.wrapWithGlobals(fun), noCallToRequire, Some(fun))
+        if (policyViolations.nonEmpty)
+          return log.append(s"policy violation found ($jsFile)\n")
+
+      } catch {
+        case e: scala.NotImplementedError => return log.append(s"policy checking failed ($jsFile)\n")
+        case e: AssertionError => return log.append(s"policy checking failed ($jsFile)\n")
+      }
     }
 
 

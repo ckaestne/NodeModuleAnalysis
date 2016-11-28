@@ -1,5 +1,7 @@
 package edu.cmu.cs.nodesec.parser
 
+import java.io.File
+
 import jawn.{Parser, SimpleFacade}
 
 import scala.util.parsing.input.{NoPosition, Position, Positional}
@@ -10,25 +12,35 @@ import scala.util.parsing.input.{NoPosition, Position, Positional}
   */
 class JSASTParser {
 
-  trait JsValue
 
-  object JsNull extends JsValue
+  def parse(json_ast: String) = {
+    toProgram(Parser.parseFromString(json_ast)(JsStructure).get)
+  }
 
-  object JsFalse extends JsValue
+  def parse(json_ast_file: File) = {
+    toProgram(Parser.parseFromFile(json_ast_file)(JsStructure).get)
+  }
 
-  object JsTrue extends JsValue
 
-  case class JsNumber(v: String) extends JsValue
+  private trait JsValue
 
-  case class JsString(v: String) extends JsValue
+  private object JsNull extends JsValue
 
-  case class JsArray(vs: List[JsValue]) extends JsValue
+  private object JsFalse extends JsValue
 
-  case class JsObject(vs: Map[String, JsValue]) extends JsValue
+  private object JsTrue extends JsValue
 
-  case class ASTNode(t: String, vs: Map[String, JsValue], loc: Position) extends JsValue
+  private case class JsNumber(v: String) extends JsValue
 
-  object Spray extends SimpleFacade[JsValue] {
+  private case class JsString(v: String) extends JsValue
+
+  private case class JsArray(vs: List[JsValue]) extends JsValue
+
+  private case class JsObject(vs: Map[String, JsValue]) extends JsValue
+
+  private case class ASTNode(t: String, vs: Map[String, JsValue], loc: Position) extends JsValue
+
+  private object JsStructure extends SimpleFacade[JsValue] {
     def jnull() = JsNull
 
     def jfalse() = JsFalse
@@ -75,30 +87,24 @@ class JSASTParser {
     }
   }
 
-  def parse(json_ast: String) = {
-    val json = Parser.parseFromString(json_ast)(Spray).get
 
-    toProgram(json)
-
-  }
-
-  def m_array(b: Map[String, JsValue], s: String): List[JsValue] = b.get(s).get match {
+  private def m_array(b: Map[String, JsValue], s: String): List[JsValue] = b.get(s).get match {
     case JsArray(v) => v
   }
 
-  def toProgram(json: JsValue): FunctionBody = positioned(json, json match {
+  private def toProgram(json: JsValue): FunctionBody = positioned(json, json match {
     case ASTNode("Program", b, _) => FunctionBody(m_array(b, "body").map(toStmt))
   })
 
-  def toId(json: JsValue): Id = positioned(json, json match {
+  private def toId(json: JsValue): Id = positioned(json, json match {
     case ASTNode("Identifier", b, _) => Id(toString(b("name")))
   })
 
-  def toString(json: JsValue): String = json match {
+  private def toString(json: JsValue): String = json match {
     case JsString(x) => x
   }
 
-  def toBool(json: JsValue): Boolean = json match {
+  private def toBool(json: JsValue): Boolean = json match {
     case JsFalse => false
     case JsTrue => true
   }
@@ -110,31 +116,35 @@ class JSASTParser {
   }
 
 
-  def positioned[T <: Positional](json: JsValue, ast: T): T = json match {
+  private def positioned[T <: Positional](json: JsValue, ast: T): T = json match {
     case ASTNode(_, _, pos) => ast.setPos(pos)
     case _ => ast
   }
 
-  def toStmt(json: JsValue): Stmt = positioned(json, json match {
+  private def toStmt(json: JsValue): Stmt = positioned(json, json match {
     case ASTNode("EmptyStatement", _, _) => EmptyStmt()
     case ASTNode("BlockStatement", b, _) => CompoundStmt(m_array(b, "body").map(toStmt))
     case ASTNode("ExpressionStatement", b, _) => ExpressionStmt(toExpr(b("expression")))
     case ASTNode("IfStatement", b, _) => IfStmt(toExpr(b("test")), toStmt(b("consequent")), opt(toStmt, b("alternate")))
-    case ASTNode("LabeledStatement", b, _) => NotImplStmt()
-    case ASTNode("BreakStatement", b, _) => NotImplStmt()
-    case ASTNode("ContinueStatement", b, _) => NotImplStmt()
-    case ASTNode("WithStatement", b, _) => NotImplStmt()
-    case ASTNode("SwitchStatement", b, _) => NotImplStmt()
-    case ASTNode("ThrowStatement", b, _) => NotImplStmt()
-    case ASTNode("TryStatement", b, _) => NotImplStmt()
+    case ASTNode("LabeledStatement", b, _) => ???
+    case ASTNode("BreakStatement", b, _) => ???
+    case ASTNode("ContinueStatement", b, _) => ???
+    case ASTNode("WithStatement", b, _) => ???
+    case ASTNode("SwitchStatement", b, _) => ???
+    case ASTNode("ThrowStatement", b, _) => ???
+    case ASTNode("TryStatement", b, _) => ???
     case ASTNode("ReturnStatement", b, _) => ReturnStmt(opt(toExpr, b("argument")))
     case ASTNode("WhileStatement", b, _) => WhileStmt(toExpr(b("test")), toStmt(b("body")))
-    case ASTNode("DoWhileStatement", b, _) => NotImplStmt()
-    case ASTNode("ForStatement", b, _) => NotImplStmt()
-    case ASTNode("ForInStatement", b, _) => NotImplStmt()
-    case ASTNode("ForOfStatement", b, _) => NotImplStmt()
-    case ASTNode("LetStatement", b, _) => NotImplStmt()
-    case ASTNode("DebuggerStatement", b, _) => NotImplStmt()
+    case ASTNode("DoWhileStatement", b, _) => DoWhileStmt(toStmt(b("body")), toExpr(b("test")))
+    case ASTNode("ForStatement", b, _) =>
+      val (decl, init) = toForInit(b("init"))
+      ForStmt(decl, init, opt(toExpr, b("test")), opt(toExpr, b("update")), toStmt(b("body")))
+    case ASTNode("ForInStatement", b, _) =>
+      val (decl, init) = toForInit(b("left"))
+      ForInStmt(decl, init.get, toExpr(b("right")), toStmt(b("body")), toBool(b("each")))
+    case ASTNode("ForOfStatement", b, _) => ???
+    case ASTNode("LetStatement", b, _) => ???
+    case ASTNode("DebuggerStatement", b, _) => ???
     case ASTNode("FunctionDeclaration", b, _) => FunDeclaration(
       toId(b("id")),
       m_array(b, "params").map(toId), //TODO pattern?
@@ -148,12 +158,24 @@ class JSASTParser {
     case ASTNode("VariableDeclaration", b, _) => VarStmt(m_array(b, "declarations").map(toVarDef))
   })
 
-  def toVarDef(json: JsValue): VarDef = json match {
+  private def toForInit(json: JsValue): (Option[VarDef], Option[Expr]) =
+    json match {
+      case ASTNode("VariableDeclaration", b, _) =>
+        val d = m_array(b, "declarations").map(toVarDef).head
+        if (d.init.isDefined)
+          (Some(VarDef(d.name, None)), Some(AssignExpr(d.name, "=", d.init.get)))
+        else
+          (Some(VarDef(d.name, None)), Some(d.name))
+      case e@ASTNode("Expression", b, _) => (None, Some(toExpr(e)))
+      case JsNull => (None, None)
+    }
+
+  private def toVarDef(json: JsValue): VarDef = json match {
     case ASTNode("VariableDeclarator", b, _) => VarDef(toId(b("id")), opt(toExpr, b("init")))
   }
 
 
-  def toProperty(json: JsValue): (String, Expr) = json match {
+  private def toProperty(json: JsValue): (String, Expr) = json match {
     case ASTNode("Property", b, _) =>
       val key = b("key") match {
         case ASTNode("Identifier", b, _) => toString(b("name"))
@@ -163,7 +185,7 @@ class JSASTParser {
       (key, toExpr(b("value")))
   }
 
-  def toLit(json: JsValue): Lit = positioned(json, json match {
+  private def toLit(json: JsValue): Lit = positioned(json, json match {
     case JsFalse => Lit("false")
     case JsTrue => Lit("true")
     case JsNumber(v) => Lit(v)
@@ -171,9 +193,9 @@ class JSASTParser {
     case JsNull => Lit("null")
   })
 
-  def toExpr(json: JsValue): Expr = positioned(json, json match {
+  private def toExpr(json: JsValue): Expr = positioned(json, json match {
     case ASTNode("ThisExpression", b, _) => Id("this")
-    case ASTNode("ArrayExpression", b, _) => NotImplExpr()
+    case ASTNode("ArrayExpression", b, _) => ArrayExpr(m_array(b, "elements").map(toExpr))
     case ASTNode("ObjectExpression", b, _) => ObjExpr(m_array(b, "properties").map(toProperty))
     case ASTNode("FunctionExpression", b, _) =>
       FunExpr(
@@ -193,8 +215,8 @@ class JSASTParser {
         FunctionBody(List(toStmt(b("body"))))
         //TODO others
       )
-    case ASTNode("SequenceExpression", b, _) => NotImplExpr()
-    case ASTNode("UnaryExpression", b, _) =>
+    case ASTNode("SequenceExpression", b, _) => ???
+    case ASTNode(x, b, _) if x == "UpdateExpression" || x == "UnaryExpression" =>
       if (toBool(b("prefix")))
         UnaryExpr(toString(b("operator")), toExpr(b("argument")))
       else
@@ -207,22 +229,21 @@ class JSASTParser {
       AssignExpr(toExpr(b("left")), toString(b("operator")), toExpr(b("right")))
     case ASTNode("ConditionalExpression", b, _) =>
       ITEExpr(toExpr(b("test")), toExpr(b("alternate")), toExpr(b("consequent")))
-    case ASTNode("UpdateExpression", b, _) => NotImplExpr()
     case ASTNode("NewExpression", b, _) =>
       NewExpr(toExpr(b("callee")), m_array(b, "arguments").map(toExpr))
     case ASTNode("CallExpression", b, _) =>
       FunCall(toExpr(b("callee")), m_array(b, "arguments").map(toExpr))
     case ASTNode("MemberExpression", b, _) =>
       if (toBool(b("computed")))
-        NotImplExpr()
+        DynFieldAcc(toExpr(b("object")), toExpr(b("property")))
       else
         FieldAcc(toExpr(b("object")), toId(b("property")))
-    case ASTNode("YieldExpression", b, _) => NotImplExpr()
-    case ASTNode("ComprehensionExpression", b, _) => NotImplExpr()
-    case ASTNode("GeneratorExpression", b, _) => NotImplExpr()
-    case ASTNode("GraphExpression", b, _) => NotImplExpr()
-    case ASTNode("GraphIndexExpression", b, _) => NotImplExpr()
-    case ASTNode("LetExpression", b, _) => NotImplExpr()
+    case ASTNode("YieldExpression", b, _) => ???
+    case ASTNode("ComprehensionExpression", b, _) => ???
+    case ASTNode("GeneratorExpression", b, _) => ???
+    case ASTNode("GraphExpression", b, _) => ???
+    case ASTNode("GraphIndexExpression", b, _) => ???
+    case ASTNode("LetExpression", b, _) => ???
     case ASTNode("Literal", b, _) => toLit(b("raw"))
     case ASTNode("Identifier", b, _) => Id(toString(b("name")))
   })

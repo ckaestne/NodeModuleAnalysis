@@ -17,6 +17,12 @@ trait Stmt extends AST {
 
   def toVM(isLocal: String => Boolean): Statement
 
+  def getVarDecl: List[VarDef] = Nil
+
+  def getInnerStmt: List[Stmt] = Nil
+
+  def getFunDecl: List[FunDeclaration] = Nil
+
 }
 
 case class ExpressionStmt(expr: Expr) extends Stmt {
@@ -25,12 +31,52 @@ case class ExpressionStmt(expr: Expr) extends Stmt {
 
 case class WhileStmt(expr: Expr, body: Stmt) extends Stmt {
   def toVM(isLocal: String => Boolean): Statement = LoopStatement(body.toVM(isLocal)).copyPosition(this) ++ expr.toVM(isLocal)._1
+
+  override def getInnerStmt: List[Stmt] = List(body)
+}
+
+case class DoWhileStmt(body: Stmt, expr: Expr) extends Stmt {
+  def toVM(isLocal: String => Boolean): Statement =
+    LoopStatement(expr.toVM(isLocal)._1 ++ body.toVM(isLocal)).copyPosition(this)
+
+  override def getInnerStmt: List[Stmt] = List(body)
 }
 
 case class IfStmt(expr: Expr, t: Stmt, e: Option[Stmt]) extends Stmt {
   def toVM(isLocal: String => Boolean): Statement =
     ConditionalStatement(e.map(s => s.toVM(isLocal)).getOrElse(emptyStatement), t.toVM(isLocal)).copyPosition(this) ++
       expr.toVM(isLocal)._1
+
+  override def getInnerStmt: List[Stmt] = t :: e.map(List(_)).getOrElse(Nil)
+}
+
+/**
+  * vardecl does not contain an initializer; that is placed in init
+  */
+case class ForStmt(varDecl: Option[VarDef], init: Option[Expr], test: Option[Expr], update: Option[Expr], body: Stmt) extends Stmt {
+  def toVM(isLocal: String => Boolean): Statement = {
+    val initVm: Statement = init.map(_.toVM(isLocal)._1).getOrElse(EmptyStatement)
+    val testVm: Statement = init.map(_.toVM(isLocal)._1).getOrElse(EmptyStatement)
+    val updateVm: Statement = init.map(_.toVM(isLocal)._1).getOrElse(EmptyStatement)
+    LoopStatement(body.toVM(isLocal) ++ updateVm ++ testVm).copyPosition(this) ++ initVm
+  }
+
+  override def getInnerStmt: List[Stmt] = List(body)
+
+  override def getVarDecl: List[VarDef] = varDecl.map(List(_)).getOrElse(Nil)
+}
+
+case class ForInStmt(varDecl: Option[VarDef], left: Expr, right: Expr, body: Stmt, each: Boolean) extends Stmt {
+  def toVM(isLocal: String => Boolean): Statement = {
+    val leftVm = left.toVM(isLocal)
+    val rightVm = right.toVM(isLocal)
+    val load = Load(leftVm._2, rightVm._2, DynFieldAcc.magicDynFieldAccess)
+    LoopStatement(body.toVM(isLocal) ++ load).copyPosition(this) ++ leftVm._1 ++ rightVm._1//TODO order may not be precise
+  }
+
+  override def getInnerStmt: List[Stmt] = List(body)
+
+  override def getVarDecl: List[VarDef] = varDecl.map(List(_)).getOrElse(Nil)
 }
 
 
@@ -54,25 +100,18 @@ case class FunctionBody(inner: List[Stmt]) extends AST {
 
   lazy val functionDeclarations = inner.map(findFunctionDeclarations).fold(List[LocalVariable]())(_ ++ _)
 
-  private def findLocalVar(s: Stmt): List[LocalVariable] = s match {
-    case VarStmt(vars) => vars.map(v => new LocalVariable(v.name.a)).foldRight(List[LocalVariable]())(_ :: _)
-    case CompoundStmt(inner) => inner.map(findLocalVar).fold(Nil)(_ ++ _)
-    case IfStmt(_, t, e) => findLocalVar(t) ++ e.map(findLocalVar).getOrElse(Nil)
-    case WhileStmt(_, b) => findLocalVar(b)
-    case _ => Nil
-  }
 
-  private def findFunctionDeclarations(s: Stmt): List[LocalVariable] = s match {
-    case FunDeclaration(name, _, _) => new LocalVariable(name.a) :: Nil
-    case CompoundStmt(inner) => inner.map(findFunctionDeclarations).fold(Nil)(_ ++ _)
-    case IfStmt(_, t, e) => findFunctionDeclarations(t) ++ e.map(findFunctionDeclarations).getOrElse(Nil)
-    case WhileStmt(_, b) => findFunctionDeclarations(b)
-    case _ => Nil
-  }
+  private def findLocalVar(s: Stmt): List[LocalVariable] =
+    s.getInnerStmt.map(findLocalVar).fold(s.getVarDecl.map(v => new LocalVariable(v.name.a)))(_ ++ _)
+
+  private def findFunctionDeclarations(s: Stmt): List[LocalVariable] =
+    s.getInnerStmt.map(findLocalVar).fold(s.getFunDecl.map(v => new LocalVariable(v.name.a)))(_ ++ _)
 }
 
 case class CompoundStmt(inner: List[Stmt]) extends Stmt {
   def toVM(isLocal: String => Boolean): Statement = inner.map(_.toVM(isLocal)).reverse.fold(emptyStatement)(_ ++ _)
+
+  override def getInnerStmt: List[Stmt] = inner
 }
 
 case class VarStmt(vars: List[VarDef]) extends Stmt {
@@ -84,6 +123,8 @@ case class VarStmt(vars: List[VarDef]) extends Stmt {
   }
 
   def toVM(isLocal: String => Boolean): Statement = vars.filter(_.init.isDefined).map(x => toDefStmt(isLocal, x.name.a, x.init.get)).fold(emptyStatement)(_ ++ _)
+
+  override def getVarDecl: List[VarDef] = vars
 }
 
 case class EmptyStmt() extends Stmt {
@@ -167,6 +208,21 @@ case class FieldAcc(a: Expr, field: Id) extends Expr {
   }
 }
 
+object DynFieldAcc {
+  val magicDynFieldAccess = "$_"
+}
+
+case class DynFieldAcc(a: Expr, field: Expr) extends Expr {
+
+  def toVM(isLocal: String => Boolean): (Statement, Variable) = {
+    val (fieldvm, fieldv) = field.toVM(isLocal)
+    val (s, v) = a.toVM(isLocal)
+    val r = freshVar
+    (Load(r, v, DynFieldAcc.magicDynFieldAccess).copyPosition(this) ++ s ++ fieldvm, r)
+  }
+}
+
+
 case class FunCall(a: Expr, args: List[Expr]) extends Expr {
   def toVM(isLocal: String => Boolean): (Statement, Variable) = {
     val (fs, fv) = a.toVM(isLocal)
@@ -189,7 +245,7 @@ case class NewExpr(a: Expr, args: List[Expr]) extends Expr {
   }
 }
 
-abstract class Function(param: List[Id], body: FunctionBody){
+abstract class Function(param: List[Id], body: FunctionBody) {
   protected def isLocalToFun(name: String) =
     body.localVars.exists(_.name == name) ||
       body.functionDeclarations.exists(_.name == name) ||
@@ -206,6 +262,9 @@ case class FunDeclaration(name: Id, param: List[Id], body: FunctionBody) extends
       body.localVars ++ body.functionDeclarations,
       body.toVM(isLocalToFun)).copyPosition(this)
   }
+
+  override def getFunDecl: List[FunDeclaration] = this :: Nil
+
 }
 
 case class FunExpr(name: Option[Id], param: List[Id], body: FunctionBody) extends Function(param, body) with Expr {
@@ -256,6 +315,22 @@ case class ObjExpr(m: List[(String, Expr)]) extends Expr {
     for (field <- m) {
       val (s, v) = field._2.toVM(isLocal)
       result = Store(r, field._1, v).copyPosition(this) ++ s ++ result
+    }
+
+    (result, r)
+  }
+}
+
+case class ArrayExpr(m: List[Expr]) extends Expr {
+  //arrays are modeled as objects with a single field __elements__ that holds all elements
+  def toVM(isLocal: String => Boolean): (Statement, Variable) = {
+    val r = freshVar
+    val objectConstVar = new AnonymousVariable()
+    val objectConstStmt = ConstAssignment(objectConstVar, "Array")
+    var result: Statement = Constructor(r, objectConstVar, Nil).copyPosition(this) ++ objectConstStmt
+    for (field <- m) {
+      val (s, v) = field.toVM(isLocal)
+      result = Store(r, "__elements__", v).copyPosition(this) ++ s ++ result
     }
 
     (result, r)
