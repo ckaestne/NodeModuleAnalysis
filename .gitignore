@@ -1,4 +1,7 @@
-.idea/
+workingDir/
+*.pp
+node_modules/
 project/
 target/
+.idea/
 *~
