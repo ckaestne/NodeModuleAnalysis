@@ -14,6 +14,8 @@ sealed trait AST extends Product with Positional {
 
 
 trait Stmt extends AST {
+  def astCopy(): Stmt
+
 
   def toVM(isLocal: String => Boolean): Statement
 
@@ -27,19 +29,20 @@ trait Stmt extends AST {
 
 case class ExpressionStmt(expr: Expr) extends Stmt {
   def toVM(isLocal: String => Boolean): Statement = expr.toVM(isLocal)._1
+
+  override def astCopy(): ExpressionStmt = ExpressionStmt(expr)
 }
 
 case class WhileStmt(expr: Expr, body: Stmt) extends Stmt {
   def toVM(isLocal: String => Boolean): Statement = LoopStatement(body.toVM(isLocal)).copyPosition(this) ++ expr.toVM(isLocal)._1
 
   override def getInnerStmt: List[Stmt] = List(body)
+  override def astCopy(): WhileStmt = WhileStmt(expr,body.astCopy())
 }
 
-case class DoWhileStmt(body: Stmt, expr: Expr) extends Stmt {
-  def toVM(isLocal: String => Boolean): Statement =
-    LoopStatement(expr.toVM(isLocal)._1 ++ body.toVM(isLocal)).copyPosition(this)
-
-  override def getInnerStmt: List[Stmt] = List(body)
+object DoWhileStmt {
+  def apply(body: Stmt, expr: Expr) =
+    CompoundStmt(List(body, WhileStmt(expr, body)))
 }
 
 case class IfStmt(expr: Expr, t: Stmt, e: Option[Stmt]) extends Stmt {
@@ -48,37 +51,62 @@ case class IfStmt(expr: Expr, t: Stmt, e: Option[Stmt]) extends Stmt {
       expr.toVM(isLocal)._1
 
   override def getInnerStmt: List[Stmt] = t :: e.map(List(_)).getOrElse(Nil)
+
+  override def astCopy(): IfStmt = IfStmt(expr, t.astCopy(), e.map(_.astCopy()))
 }
 
 /**
   * vardecl does not contain an initializer; that is placed in init
   */
-case class ForStmt(varDecl: Option[VarDef], init: Option[Expr], test: Option[Expr], update: Option[Expr], body: Stmt) extends Stmt {
-  def toVM(isLocal: String => Boolean): Statement = {
-    val initVm: Statement = init.map(_.toVM(isLocal)._1).getOrElse(EmptyStatement)
-    val testVm: Statement = init.map(_.toVM(isLocal)._1).getOrElse(EmptyStatement)
-    val updateVm: Statement = init.map(_.toVM(isLocal)._1).getOrElse(EmptyStatement)
-    LoopStatement(body.toVM(isLocal) ++ updateVm ++ testVm).copyPosition(this) ++ initVm
-  }
-
-  override def getInnerStmt: List[Stmt] = List(body)
-
-  override def getVarDecl: List[VarDef] = varDecl.map(List(_)).getOrElse(Nil)
+object ForStmt {
+  def apply(varDecl: Option[VarDef], init: Option[Expr], test: Option[Expr], update: Option[Expr], body: Stmt): Stmt =
+    CompoundStmt(List(
+      varDecl.map(v => VarStmt(v :: Nil)).getOrElse(EmptyStmt()),
+      init.map(ExpressionStmt).getOrElse(EmptyStmt()),
+      WhileStmt(test.getOrElse(ConstExpr("true")),
+        CompoundStmt(List(body, update.map(ExpressionStmt).getOrElse(EmptyStmt()))))
+    ))
 }
+
 
 case class ForInStmt(varDecl: Option[VarDef], left: Expr, right: Expr, body: Stmt, each: Boolean) extends Stmt {
   def toVM(isLocal: String => Boolean): Statement = {
     val leftVm = left.toVM(isLocal)
     val rightVm = right.toVM(isLocal)
     val load = Load(leftVm._2, rightVm._2, DynFieldAcc.magicDynFieldAccess)
-    LoopStatement(body.toVM(isLocal) ++ load).copyPosition(this) ++ leftVm._1 ++ rightVm._1//TODO order may not be precise
+    LoopStatement(body.toVM(isLocal) ++ load).copyPosition(this) ++ leftVm._1 ++ rightVm._1 //TODO order may not be precise
   }
 
   override def getInnerStmt: List[Stmt] = List(body)
 
   override def getVarDecl: List[VarDef] = varDecl.map(List(_)).getOrElse(Nil)
+
+  override def astCopy(): ForInStmt = ForInStmt(varDecl,left,right, body.astCopy(),each)
 }
 
+case class ContinueStmt(label: Option[Id]) extends Stmt {
+  override def toVM(isLocal: (String) => Boolean): Statement = ???
+
+  override def astCopy(): ContinueStmt = ContinueStmt(label)
+}
+
+case class BreakStmt(label: Option[Id]) extends Stmt {
+  override def toVM(isLocal: (String) => Boolean): Statement = ???
+
+  override def astCopy(): BreakStmt = BreakStmt(label)
+}
+
+case class ThrowStmt(expr: Expr) extends Stmt {
+  override def toVM(isLocal: (String) => Boolean): Statement = ???
+
+  override def astCopy(): ThrowStmt = ThrowStmt(expr)
+}
+
+case class TryStmt(block: Stmt, handler: Option[(Expr, Stmt)], finalizer: Option[Stmt]) extends Stmt {
+  override def toVM(isLocal: (String) => Boolean): Statement = ???
+
+  override def astCopy(): TryStmt = TryStmt(block.astCopy(), handler.map(e=>(e._1, e._2.astCopy())), finalizer.map(_.astCopy()))
+}
 
 case class ReturnStmt(expr: Option[Expr]) extends Stmt {
   private def emptyReturn = {
@@ -86,10 +114,12 @@ case class ReturnStmt(expr: Option[Expr]) extends Stmt {
     (PrimAssignment(r).copyPosition(this), r)
   }
 
-  def toVM(isLocal: String => Boolean): Statement = {
-    val (s, v) = expr.map(_.toVM(isLocal)).getOrElse(emptyReturn)
-    Return(v).copyPosition(this) ++ s
-  }
+  def toVM(isLocal: String => Boolean): Statement = ???
+//  {
+//    val (s, v) = expr.map(_.toVM(isLocal)).getOrElse(emptyReturn)
+//    Return(v).copyPosition(this) ++ s
+//  }
+  override def astCopy(): ReturnStmt = ReturnStmt(expr)
 }
 
 case class FunctionBody(inner: List[Stmt]) extends AST {
@@ -112,6 +142,8 @@ case class CompoundStmt(inner: List[Stmt]) extends Stmt {
   def toVM(isLocal: String => Boolean): Statement = inner.map(_.toVM(isLocal)).reverse.fold(emptyStatement)(_ ++ _)
 
   override def getInnerStmt: List[Stmt] = inner
+
+  override def astCopy(): CompoundStmt = CompoundStmt(inner.map(_.astCopy()))
 }
 
 case class VarStmt(vars: List[VarDef]) extends Stmt {
@@ -125,15 +157,21 @@ case class VarStmt(vars: List[VarDef]) extends Stmt {
   def toVM(isLocal: String => Boolean): Statement = vars.filter(_.init.isDefined).map(x => toDefStmt(isLocal, x.name.a, x.init.get)).fold(emptyStatement)(_ ++ _)
 
   override def getVarDecl: List[VarDef] = vars
+
+  override def astCopy(): VarStmt = VarStmt(vars)
 }
 
 case class EmptyStmt() extends Stmt {
   def toVM(isLocal: String => Boolean): Statement = emptyStatement
+
+  override def astCopy(): EmptyStmt = EmptyStmt()
 }
 
 
 case class NotImplStmt(inner: Any) extends Stmt {
   def toVM(isLocal: String => Boolean): Statement = ???
+
+  override def astCopy(): NotImplStmt = NotImplStmt()
 }
 
 case class VarDef(name: Id, init: Option[Expr])
@@ -265,6 +303,7 @@ case class FunDeclaration(name: Id, param: List[Id], body: FunctionBody) extends
 
   override def getFunDecl: List[FunDeclaration] = this :: Nil
 
+  override def astCopy(): Stmt = FunDeclaration(name, param, body)
 }
 
 case class FunExpr(name: Option[Id], param: List[Id], body: FunctionBody) extends Function(param, body) with Expr {

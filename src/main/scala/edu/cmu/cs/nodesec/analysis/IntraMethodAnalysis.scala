@@ -68,10 +68,10 @@ class IntraMethodAnalysis {
     case Assignment(l, r) =>
       val (v, newEnv) = env.lookup(r)
       newEnv.store(l, v)
-    case Return(l) =>
-      //same as assignment to a special "$return" variable
-      val (v, newEnv) = env.lookup(l)
-      newEnv.store(returnVariable, v)
+//    case Return(l) =>
+//      //same as assignment to a special "$return" variable
+//      val (v, newEnv) = env.lookup(l)
+//      newEnv.store(returnVariable, v)
     case OpStatement(l, a, b) =>
       val (va, newEnv) = env.lookup(a)
       val (vb, newEnv2) = newEnv.lookup(a)

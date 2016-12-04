@@ -104,6 +104,10 @@ class JSASTParser {
     case JsString(x) => x
   }
 
+  private def toCatchClause(json: JsValue): (Expr, Stmt) = json match {
+    case ASTNode("CatchClause", b, _) => (toExpr(b("param")), toStmt(b("body")))
+  }
+
   private def toBool(json: JsValue): Boolean = json match {
     case JsFalse => false
     case JsTrue => true
@@ -127,12 +131,12 @@ class JSASTParser {
     case ASTNode("ExpressionStatement", b, _) => ExpressionStmt(toExpr(b("expression")))
     case ASTNode("IfStatement", b, _) => IfStmt(toExpr(b("test")), toStmt(b("consequent")), opt(toStmt, b("alternate")))
     case ASTNode("LabeledStatement", b, _) => ???
-    case ASTNode("BreakStatement", b, _) => ???
-    case ASTNode("ContinueStatement", b, _) => ???
+    case ASTNode("BreakStatement", b, _) => BreakStmt(opt(toId, b("label")))
+    case ASTNode("ContinueStatement", b, _) => ContinueStmt(opt(toId, b("label")))
     case ASTNode("WithStatement", b, _) => ???
     case ASTNode("SwitchStatement", b, _) => ???
-    case ASTNode("ThrowStatement", b, _) => ???
-    case ASTNode("TryStatement", b, _) => ???
+    case ASTNode("ThrowStatement", b, _) => ThrowStmt(toExpr(b("argument")))
+    case ASTNode("TryStatement", b, _) => TryStmt(toStmt(b("block")), opt(toCatchClause, b("handler")), opt(toStmt, b("finalizer")))
     case ASTNode("ReturnStatement", b, _) => ReturnStmt(opt(toExpr, b("argument")))
     case ASTNode("WhileStatement", b, _) => WhileStmt(toExpr(b("test")), toStmt(b("body")))
     case ASTNode("DoWhileStatement", b, _) => DoWhileStmt(toStmt(b("body")), toExpr(b("test")))

@@ -38,4 +38,5 @@ object AnalysisHelper {
   }
 
   val returnVariable = LocalVariable("$return")
+  val exceptionVariable = LocalVariable("$exception")
 }
