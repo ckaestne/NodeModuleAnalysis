@@ -22,7 +22,7 @@ class Obj(_name: String = NameHelper.genObjectName) extends Value {
 
 case class Param(paramName: String) extends Obj("param-" + paramName)
 
-class Fun(val f: FunDecl, _name: String = NameHelper.genFunctionName) extends Obj(_name)
+class FunctionValue(val f: Fun, _name: String = NameHelper.genFunctionName) extends Obj(_name)
 
 class UnknownValue(_name: String = "unknown-" + NameHelper.genObjectName) extends Obj(_name) {
   override def isUnknown: Boolean = true

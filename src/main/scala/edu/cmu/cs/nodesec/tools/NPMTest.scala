@@ -4,8 +4,8 @@ package edu.cmu.cs.nodesec.tools
 import java.io._
 
 import edu.cmu.cs.nodesec.analysis.AnalysisHelper._
+import edu.cmu.cs.nodesec.analysis.MethodCompositionAnalysis
 import edu.cmu.cs.nodesec.analysis.MethodCompositionAnalysis.noCallToRequire
-import edu.cmu.cs.nodesec.analysis.{AnalysisHelper, MethodCompositionAnalysis}
 import edu.cmu.cs.nodesec.parser.JSParser
 
 import scala.sys.process._
@@ -61,9 +61,9 @@ object NPMTest extends App {
 
     }
 
-    var vms = for ((jsFile, ast) <- asts) yield {
+    var cfgs = for ((jsFile, ast) <- asts) yield {
       try {
-        (jsFile, wrapScript(ast))
+        (jsFile, cfgScript(ast))
       } catch {
         case e: scala.NotImplementedError => return log.append(s"toVM failed ($jsFile)\n")
         case e: AssertionError => return log.append(s"toVM failed ($jsFile)\n")
@@ -71,10 +71,10 @@ object NPMTest extends App {
     }
 
 
-    for ((jsFile, fun) <- vms) {
+    for ((jsFile, fun) <- cfgs) {
       try {
-        val policyViolations = new MethodCompositionAnalysis().
-          analyze(AnalysisHelper.wrapWithGlobals(fun), noCallToRequire, Some(fun))
+        val policyViolations = MethodCompositionAnalysis.
+          analyze(fun, noCallToRequire, Some(fun))
         if (policyViolations.nonEmpty)
           return log.append(s"policy violation found ($jsFile)\n")
 

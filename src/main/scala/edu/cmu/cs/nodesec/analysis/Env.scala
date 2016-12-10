@@ -9,7 +9,7 @@ case class Env(
                 store: Map[Variable, Set[Value]],
                 members: Map[Obj, Map[String, Set[Value]]],
                 calls: Map[Call, Set[MethodReturnValue]],
-                functionPtrs: Set[(Obj, FunDecl)],
+                functionPtrs: Set[(Obj, Fun)],
                 reads: Set[(Obj, String, Value)],
                 writes: Set[(Obj, String, Value)],
                 localScopeObj: Obj,
@@ -76,7 +76,7 @@ case class Env(
         val (v, e) = env.lookupFieldFromObj(o, f, () => createTargetObj(o, loadStmt))
         env = e
         result ++= v
-      case _ => assert(false, "TODO? load from primitive value not expected")
+      case v => assert(false, s"TODO? load from primitive value `$v` not expected")
     }
 
     (result, env)
@@ -150,7 +150,7 @@ case class Env(
   def addCall(c: Call, retVal: MethodReturnValue): Env =
     this.copy(calls = calls + (c -> (calls.getOrElse(c, Set()) + retVal)))
 
-  def addFunctionPtr(funObj: Fun, fun: FunDecl): Env = copy(functionPtrs = functionPtrs.+((funObj, fun)))
+  def addFunctionPtr(funObj: FunctionValue, fun: Fun): Env = copy(functionPtrs = functionPtrs.+((funObj, fun)))
 
 }
 

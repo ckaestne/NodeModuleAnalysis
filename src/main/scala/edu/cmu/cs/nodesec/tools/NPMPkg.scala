@@ -3,9 +3,9 @@ package edu.cmu.cs.nodesec.tools
 import java.io._
 
 import edu.cmu.cs.nodesec.analysis.AnalysisHelper._
+import edu.cmu.cs.nodesec.analysis.MethodCompositionAnalysis
 import edu.cmu.cs.nodesec.analysis.MethodCompositionAnalysis.noCallToRequire
-import edu.cmu.cs.nodesec.analysis.{AnalysisHelper, MethodCompositionAnalysis}
-import edu.cmu.cs.nodesec.parser.{JSASTParser, JSParser}
+import edu.cmu.cs.nodesec.parser.JSASTParser
 
 import scala.sys.process._
 
@@ -50,14 +50,14 @@ object NPMPkg extends App {
       (jsFile, parsed)
     }
 
-    var vms = for ((jsFile, ast) <- asts) yield {
-        (jsFile, wrapScript(ast))
+    var cfgs = for ((jsFile, ast) <- asts) yield {
+        (jsFile, cfgWithGlobals(ast))
     }
 
 
-    for ((jsFile, fun) <- vms) {
-      val policyViolations = new MethodCompositionAnalysis().
-        analyze(AnalysisHelper.wrapWithGlobals(fun), noCallToRequire, Some(fun))
+    for ((jsFile, fun) <- cfgs) {
+      val policyViolations = MethodCompositionAnalysis.
+        analyze(fun, noCallToRequire, Some(fun))
       if (policyViolations.nonEmpty)
         throw new RuntimeException (s"policy violation found ($jsFile)\n")
     }

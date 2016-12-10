@@ -16,7 +16,7 @@ import edu.cmu.cs.nodesec.parser.FunctionBody
   */
 class IntraMethodAnalysis {
 
-  import AnalysisHelper._
+  import VariableHelper._
 
 
   private def freshObject = new Obj()
@@ -31,48 +31,84 @@ class IntraMethodAnalysis {
 
 
   def analyzeScript(fun: FunctionBody): Env =
-    analyze(wrapScript(fun))
+    analyze(AnalysisHelper.cfgScript(fun))
 
-  def analyze(fun: FunDecl): Env = {
+  def analyze(fun: Fun): Env = {
     //initialize store with parameters and return value; assign all parameters and local variables as members of the scope
     val closureScopeObj: Obj = Param("$closure")
     val localScopeObj: Obj = Param("$local")
     val params = fun.args.map(a => (a, Set[Value](new Param(a.name))))
-    val locals = fun.localVariables.map(a => (a, Set[Value](PrimitiveValue))) :+
-      ((LocalVariable("global"), Set[Value](closureScopeObj)))//`global` is a local variable pointing to the global scope
+    val locals = fun.localVariables.map(a => (a, Set[Value](PrimitiveValue))) +
+      ((LocalVariable("global"), Set[Value](closureScopeObj))) //`global` is a local variable pointing to the global scope
     val store: Map[Variable, Set[Value]] = Map[Variable, Set[Value]]() ++
       (params ++ locals).toMap + (returnVariable -> Set(PrimitiveValue))
     val members: Map[Obj, Map[String, Set[Value]]] =
       Map(localScopeObj -> (params ++ locals).map(a => (a._1.name, a._2)).toMap)
     val env = Env.empty.copy(store = store, members = members, localScopeObj = localScopeObj, closureObj = closureScopeObj)
-    analyze(env, fun.body)
+    analyzeCFG(env, fun.body)
   }
 
-  private def analyze(env: Env, p: Statement): Env = p match {
-    case Sequence(inner) =>
-      inner.foldRight(env)((s, env) => analyze(env, s))
-    case ConditionalStatement(alt1, alt2) =>
-      val env1 = analyze(env, alt1)
-      val env2 = analyze(env, alt2)
-      env1 union env2
-    case LoopStatement(inner) =>
-      val newEnv = analyze(env, inner).union(env)
-      if (newEnv == env)
-        newEnv
-      else analyze(newEnv, p) //iterate until fixpoint
-    case stmt =>
-      transfer(env, stmt)
+  //  private def computePredecessors(successors: Map[Block, Set[Block]]): Map[Block, Set[Block]] = {
+  //    var result = Map[Block, Set[Block]]()
+  //    for ((a, bs) <- successors; b <- bs) {
+  //      result += (b -> (result.getOrElse(b, Set()) + a))
+  //    }
+  //    result
+  //  }
+
+  private def analyzeCFG(initialEnv: Env, cfg: CFG): Env = {
+    //simple worklist algorithm
+    var inputEnvs: Map[Block, Env] = Map(cfg.entry -> initialEnv)
+    var worklist: Seq[Block] = bfs(cfg)
+    while (worklist.nonEmpty) {
+      val block = worklist.head
+      worklist = worklist.tail
+
+      val sourceEnv = inputEnvs(block)
+      val resultingEnv = transfer(sourceEnv, block)
+      val successors = cfg.successors(block)
+      //if env has changed, put all successors on end of worklist that are not already on there
+      for (succ <- successors
+           if !(inputEnvs contains succ) || inputEnvs(succ) != resultingEnv) {
+        if (!(inputEnvs contains succ))
+          inputEnvs += (succ -> resultingEnv)
+        else
+          inputEnvs += (succ -> inputEnvs(succ).union(resultingEnv))
+        if (!(worklist contains succ))
+          worklist = worklist :+ succ
+      }
+    }
+    transfer(inputEnvs(cfg.exit), cfg.exit)
   }
 
-  private def transfer(env: Env, p: Statement): Env = p match {
+  private def bfs(cfg: CFG): Seq[Block] = {
+    var result = Seq[Block]()
+    var worklist = cfg.entry :: Nil
+    while (worklist.nonEmpty) {
+      val block = worklist.head
+      worklist = worklist.tail
+
+      result = result :+ block
+
+      worklist = worklist ++ (cfg.successors.getOrElse(block, Set()) -- worklist -- result)
+    }
+    result
+  }
+
+  //apply to every statement, from tail to head (due to reverse
+  //instruction order in block.s)
+  private def transfer(env: Env, p: Block): Env =
+  p.s.foldRight(env)((s, env) => transfer(env, s))
+
+  private def transfer(env: Env, p: Instruction): Env = p match {
     case Assignment(l, r) =>
       val (v, newEnv) = env.lookup(r)
       newEnv.store(l, v)
-//    case Return(l) =>
-//      //same as assignment to a special "$return" variable
-//      val (v, newEnv) = env.lookup(l)
-//      newEnv.store(returnVariable, v)
-    case OpStatement(l, a, b) =>
+    //    case Return(l) =>
+    //      //same as assignment to a special "$return" variable
+    //      val (v, newEnv) = env.lookup(l)
+    //      newEnv.store(returnVariable, v)
+    case OpInstruction(l, a, b) =>
       val (va, newEnv) = env.lookup(a)
       val (vb, newEnv2) = newEnv.lookup(a)
       newEnv2.store(l, va ++ vb)
@@ -94,8 +130,8 @@ class IntraMethodAnalysis {
       val retVal = new MethodReturnValue(receiver, othis, oargs)
       enva.store(v, Set(retVal)).addCall(c, retVal)
     case f: FunDecl =>
-      val funObj = new Fun(f)
-      env.store(f.v, Set(funObj)).addFunctionPtr(funObj, f)
+      val funObj = new FunctionValue(f.fun)
+      env.store(f.v, Set(funObj)).addFunctionPtr(funObj, f.fun)
     case Store(v1, f, v2) =>
       val (receiver, newEnv) = env.lookup(v1)
       //      receiver.foreach(v => assert3(!v.isUnknown, s"store to field unknown object found ($v.$f)"))

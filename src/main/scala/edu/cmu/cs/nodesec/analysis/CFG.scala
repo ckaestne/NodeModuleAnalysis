@@ -5,15 +5,11 @@ import edu.cmu.cs.nodesec.parser._
 import scala.util.parsing.input.Positional
 
 
-case class CFG(entry: Statement, exit: Statement,
-               nodes: Set[Statement], successors: Map[Statement, Set[Statement]]) {
+case class CFG(entry: Block, exit: Block,
+               nodes: Set[Block], successors: Map[Block, Set[Block]]) {
 
-  def printNode(n: Statement): String = {
-    var s = n match {
-      case Sequence(inner) => inner.mkString("\\n")
-      case s: EmptyStatement => ""
-      case s => s.toString
-    }
+  def printNode(n: Block): String = {
+    var s = n.s.reverse.mkString("\\n")
     if (n == entry)
       s = "<<init>>\\n" + s
     if (n == exit)
@@ -37,7 +33,7 @@ case class CFG(entry: Statement, exit: Statement,
 }
 
 object CFG {
-  def empty = CFG(EmptyStatement(), EmptyStatement(), Set(), Map())
+  def empty = CFG(Block.empty(), Block.empty(), Set(), Map())
 
 
 }
@@ -45,7 +41,7 @@ object CFG {
 
 object CFGBuilder {
 
-  type CFGNode = Statement
+  type CFGNode = Block
 
 
   case class CFGBuildingEnv(
@@ -81,7 +77,7 @@ object CFGBuilder {
 
     def toCFG(initStmt: Stmt, endStmt: Stmt): CFG = {
       var rnodes: Set[CFGNode] = Set()
-      var rsuccessors: Map[Statement, Set[Statement]] = Map()
+      var rsuccessors: Map[CFGNode, Set[CFGNode]] = Map()
       var initNode = nodes(initStmt)
       var endNode = nodes(endStmt)
       var mergedNodeLookup: Map[CFGNode, CFGNode] = Map()
@@ -99,7 +95,7 @@ object CFGBuilder {
           while (nodesucc.size == 1 && singlePredecessor(nodesucc.head)) {
             val succ = nodes(nodesucc.head)
 
-            node = node ++ succ
+            node = succ ++ node
             merged += succ
             nodesucc = successors.filter(_._1 == succ).map(_._2)
           }
@@ -140,22 +136,72 @@ object CFGBuilder {
       b.toString()
     }
 
-    private def printNode(n: Statement): String = n match {
-      case Sequence(inner) => inner.mkString("\\n")
-      case s: EmptyStatement => ""
-      case s => s.toString
-    }
+    private def printNode(n: CFGNode): String = n.s.reverse.mkString("\\n")
   }
+
+
+  def findInnerFunctions(cfg: CFG): Set[Fun] =
+    (for (node <- cfg.nodes; stmt <- node.s) yield stmt match {
+      case FunDecl(_, f) => Set(f)
+      case _ => Set[Fun]()
+    }).flatten
+
+  def findAllVars(cfg: CFG): Set[Variable] = (for (node <- cfg.nodes; stmt <- node.s) yield stmt match {
+    case Assignment(l, r) => Set(l, r)
+    case PrimAssignment(l) => Set(l)
+    case ConstAssignment(l, _) => Set(l)
+    case OpInstruction(a, b, c) => Set(a, b, c)
+    case Constructor(a, b, cs) => cs.toSet + a + b
+    case Call(a, b, c, ds) => ds.toSet + a + b + c
+    case Load(a, b, _) => Set(a, b)
+    case Store(a, _, b) => Set(a, b)
+    case FunDecl(a, _) => Set(a)
+  }).flatten
+
+  def findNonlocalVars(cfg: CFG): Set[ExternalVariable] =
+    findAllVars(cfg: CFG).flatMap({
+      case e: ExternalVariable => Set(e)
+      case _ => Set[ExternalVariable]()
+    })
+
+  //    (for (node <- cfg.nodes) yield node match {
+  //      case
+  //    }).flatten
+
+  def toFun(functionAST: edu.cmu.cs.nodesec.parser.Function): Fun = {
+    val localVars =
+      functionAST.body.localVars.map(_.name) ++ functionAST.body.functionDeclarations.map(_.name) ++ functionAST.param.map(_.a)
+
+    val startNode = CompoundStmt(functionAST.body.inner)
+    val endNode = EmptyStmt()
+    val env = CFGBuildingEnv(None, None, startNode, endNode, localVars.toSet, None, None)
+
+    val cfg = buildCFG(IntermediateCFG(
+      Map(endNode -> Block.empty()),
+      Set()), startNode, endNode, env).toCFG(startNode, endNode)
+
+    val innerFuns = findInnerFunctions(cfg)
+    val nonlocalVars = findNonlocalVars(cfg)
+
+    Fun(
+      cfg,
+      functionAST.param.map(p => LocalVariable(p.a)),
+      (functionAST.body.localVars ++ functionAST.body.functionDeclarations).map(p => LocalVariable(p.name)).toSet,
+      nonlocalVars,
+      innerFuns
+    )
+  }
+
 
   def buildCFG(stmt: Stmt): CFG = {
     val startNode = stmt
     val endNode = EmptyStmt()
     val env = CFGBuildingEnv(None, None, startNode, endNode, Set(), None, None)
-//    println(buildCFG(IntermediateCFG(
-//      Map(endNode -> EmptyStatement()),
-//      Set()), stmt, endNode, env).toDot())
+    //    println(buildCFG(IntermediateCFG(
+    //      Map(endNode -> EmptyStatement()),
+    //      Set()), stmt, endNode, env).toDot())
     buildCFG(IntermediateCFG(
-      Map(endNode -> EmptyStatement()),
+      Map(endNode -> Block.empty()),
       Set()), stmt, endNode, env).toCFG(startNode, endNode)
   }
 
@@ -170,8 +216,8 @@ object CFGBuilder {
     * @return AST->Statement mapping and successor ASTs
     */
   private def buildCFG(cfg: IntermediateCFG, stmt: Stmt, defaultSuccessor: Stmt, env: CFGBuildingEnv): IntermediateCFG = {
-    def _buildExpressionStmt(ast: Expr): (Statement, Variable) = buildExpressionStmt(ast, env)
-    def _simpleStmt(node: CFGNode) = cfg.addNode(stmt, node.copyPosition(stmt), defaultSuccessor)
+    def _buildExpressionStmt(ast: Expr): (CFGNode, Variable) = buildExpressionStmt(ast, env)
+    def _simpleStmt(node: CFGNode) = cfg.addNode(stmt, copyPosition(node, stmt), defaultSuccessor)
     stmt match {
       case IfStmt(expr, t, e) =>
         //t and e are successors; if there is no else branch, then defaultSucc is a successor
@@ -189,10 +235,10 @@ object CFGBuilder {
       case ForInStmt(_, left, right, body, each) =>
         ???
       case CompoundStmt(Nil) =>
-        _simpleStmt(EmptyStatement())
+        _simpleStmt(Block.empty())
       case CompoundStmt(inner) =>
         //empty statement followed by the first statement
-        var ncfg = cfg.addNode(stmt, EmptyStatement(), inner.head)
+        var ncfg = cfg.addNode(stmt, Block.empty(), inner.head)
         var innerList = inner
         while (innerList.nonEmpty) {
           //each statement followed by the next, except for last followed by default
@@ -204,10 +250,10 @@ object CFGBuilder {
       case TryStmt(block, handler, finalizer) =>
         val finalizers = finalizer.map(getExceptionFinalizer)
         var handlerStmt: Option[Stmt] = handler.map(h => CompoundStmt(List(
-          ExpressionStmt(AssignExpr(h._1, "=", Id(AnalysisHelper.exceptionVariable.name))),
+          ExpressionStmt(AssignExpr(h._1, "=", Id(VariableHelper.exceptionVariable.name))),
           h._2)))
 
-        var ncfg = cfg.addNode(stmt, EmptyStatement(), block)
+        var ncfg = cfg.addNode(stmt, Block.empty(), block)
         ncfg = buildCFG(ncfg, block, finalizer.getOrElse(defaultSuccessor), env.setExceptionHandler(handlerStmt).setFinalizers(finalizers))
         if (handlerStmt.isDefined) {
           ncfg = buildCFG(ncfg, handlerStmt.get, finalizer.getOrElse(defaultSuccessor), env.setExceptionHandler(None).setFinalizers(finalizers))
@@ -221,44 +267,38 @@ object CFGBuilder {
 
       case ReturnStmt(Some(expr)) =>
         val (s, v) = _buildExpressionStmt(expr)
-        cfg.addNode(stmt, Assignment(AnalysisHelper.returnVariable, v).copyPosition(stmt) ++ s, env.endStmt)
+        cfg.addNode(stmt, Assignment(VariableHelper.returnVariable, v).copyPosition(stmt) ++ s, env.endStmt)
       case ReturnStmt(None) =>
         val r = freshVar
         //if a finalizer exists jump to it (non-exception version) otherwise jump to end
         val jumpTarget = env.finalizers.map(_._1).getOrElse(env.endStmt)
-        cfg.addNode(stmt, Assignment(AnalysisHelper.returnVariable, r).copyPosition(stmt) ++ PrimAssignment(r).copyPosition(stmt), jumpTarget)
+        cfg.addNode(stmt, Assignment(VariableHelper.returnVariable, r).copyPosition(stmt) ++ PrimAssignment(r).copyPosition(stmt), jumpTarget)
       case ThrowStmt(expr) =>
         val (s, v) = _buildExpressionStmt(expr)
         //if a handler exists, jump there, else jump to the exception version of the finalizer
         val exceptionTarget = env.exceptionHandler.orElse(env.finalizers.map(_._2))
         if (exceptionTarget.isDefined)
-          cfg.addNode(stmt, Assignment(AnalysisHelper.exceptionVariable, v).copyPosition(stmt) ++ s, exceptionTarget.get)
+          cfg.addNode(stmt, Assignment(VariableHelper.exceptionVariable, v).copyPosition(stmt) ++ s, exceptionTarget.get)
         // if neither exist, just model this as a return statement
         else
-          cfg.addNode(stmt, Assignment(AnalysisHelper.returnVariable, v).copyPosition(stmt) ++ s, env.endStmt)
+          cfg.addNode(stmt, Assignment(VariableHelper.returnVariable, v).copyPosition(stmt) ++ s, env.endStmt)
       case ContinueStmt(None) =>
-        cfg.addNode(stmt, EmptyStatement(), env.continueTarget.get)
+        cfg.addNode(stmt, Block.empty(), env.continueTarget.get)
       case BreakStmt(None) =>
-        cfg.addNode(stmt, EmptyStatement(), env.breakTarget.get)
+        cfg.addNode(stmt, Block.empty(), env.breakTarget.get)
       case VarStmt(vars) =>
-        def toDefStmt(n: String, e: Expr): Statement = {
+        def toDefStmt(n: String, e: Expr): CFGNode = {
           val (s, v) = _buildExpressionStmt(e)
           Assignment(new LocalVariable(n), v).copyPosition(stmt) ++ s
         }
-        _simpleStmt(vars.filter(_.init.isDefined).map(x => toDefStmt(x.name.a, x.init.get)).fold(EmptyStatement())(_ ++ _))
-      case EmptyStmt() => _simpleStmt(EmptyStatement())
+        _simpleStmt(vars.filter(_.init.isDefined).map(x => toDefStmt(x.name.a, x.init.get)).fold(Block.empty())(_ ++ _))
+      case EmptyStmt() => _simpleStmt(Block.empty())
       case NotImplStmt(_) => ???
 
-      case FunDeclaration(name, param, body) =>
-        ???
-      //        assert(env.localVariableNames.contains(name.a))
-      //        val variable = new LocalVariable(name.a)
-      //        FunDecl(
-      //          variable,
-      //          param.map(x => new LocalVariable(x.a)),
-      //          body.localVars ++ body.functionDeclarations,
-      //          body.toVM(isLocalToFun)).copyPosition(stmt)
-
+      case f@FunDeclaration(name, param, body) =>
+        assert(env.localVariableNames.contains(name.a))
+        val variable = new LocalVariable(name.a)
+        _simpleStmt(FunDecl(variable, toFun(f)).copyPosition(stmt).toBlock)
 
     }
 
@@ -274,18 +314,18 @@ object CFGBuilder {
     * @return
     */
   private def getExceptionFinalizer(finalizer: Stmt): (Stmt, Stmt) =
-  (finalizer, CompoundStmt(List(finalizer.astCopy(), ThrowStmt(Id(AnalysisHelper.exceptionVariable.name)))))
+  (finalizer, CompoundStmt(List(finalizer.astCopy(), ThrowStmt(Id(VariableHelper.exceptionVariable.name)))))
 
 
-  def buildExpressionStmt(expr: Expr, env: CFGBuildingEnv): (Statement, Variable) = {
+  def buildExpressionStmt(expr: Expr, env: CFGBuildingEnv): (CFGNode, Variable) = {
     import VariableHelper._
-    def _buildExpressionStmt(ast: Expr): (Statement, Variable) = buildExpressionStmt(ast, env)
-    val (s, v) = expr match {
+    def _buildExpressionStmt(ast: Expr): (CFGNode, Variable) = buildExpressionStmt(ast, env)
+    val (s, v): (CFGNode, Variable) = expr match {
       case BinExpr(a, _, b) =>
         val (s1, v1) = _buildExpressionStmt(a)
         val (s2, v2) = _buildExpressionStmt(b)
         val r = freshVar
-        (OpStatement(r, v1, v2) ++ s1 ++ s2, r)
+        (OpInstruction(r, v1, v2) ++ s1 ++ s2, r)
 
       case AssignExpr(FieldAcc(targ, field), _, b) =>
         val (s1, v1) = _buildExpressionStmt(targ)
@@ -304,7 +344,8 @@ object CFGBuilder {
         val (st, vt) = _buildExpressionStmt(t)
         val (se, ve) = _buildExpressionStmt(e)
         val r = freshVar
-        (ConditionalStatement(Assignment(r, ve) ++ se, Assignment(r, vt) ++ st) ++ si, r)
+        //TODO technically this could be modeled as control flow branch
+        (OpInstruction(r, ve, vt) ++ se ++ st ++ si, r)
 
       case PostExpr(e, _) => _buildExpressionStmt(e)
       case UnaryExpr(a, e) =>
@@ -326,7 +367,7 @@ object CFGBuilder {
       case FunCall(a, args) =>
         val (fs, fv) = _buildExpressionStmt(a)
         val argV = args.map(_buildExpressionStmt)
-        val argStmts: Statement = argV.map(_._1).foldRight(emptyStatement)(_ ++ _)
+        val argStmts: CFGNode = argV.map(_._1).foldRight(Block.empty())(_ ++ _)
 
         val r = freshVar
         (Call(r, fv, thisVar, argV.map(_._2)) ++ argStmts ++ fs, r)
@@ -334,36 +375,33 @@ object CFGBuilder {
       case NewExpr(a, args) =>
         val (fs, fv) = _buildExpressionStmt(a)
         val argV = args.map(_buildExpressionStmt)
-        val argStmts: Statement = argV.map(_._1).foldRight(emptyStatement)(_ ++ _)
+        val argStmts: CFGNode = argV.map(_._1).foldRight(Block.empty())(_ ++ _)
 
         val r = freshVar
         (Constructor(r, fv, argV.map(_._2)) ++ argStmts ++ fs, r)
 
-      case FunExpr(name, param, body) =>
-        ???
-      //       FunDecl( freshVar,
-      //    param.map(x => new LocalVariable(x.a)),
-      //    body.localVars ++ body.functionDeclarations,
-      //    body.toVM(isLocalToFun)).copyPosition(this)
+      case f@FunExpr(name, param, body) =>
+        val v = freshVar
+        (FunDecl(v, toFun(f)).copyPosition(expr).toBlock, v)
 
       case Lit(a) =>
         val r = freshVar
-        (ConstAssignment(r, a), r)
+        (ConstAssignment(r, a).toBlock, r)
 
       case Id(a) if env.localVariableNames contains a =>
-        (emptyStatement, new LocalVariable(a))
+        (Block.empty(), new LocalVariable(a))
       case Id(a) =>
-        (emptyStatement, new ExternalVariable(a))
+        (Block.empty(), new ExternalVariable(a))
 
       case ConstExpr(a) =>
         val r = freshVar
-        (PrimAssignment(r), r)
+        (PrimAssignment(r).toBlock, r)
 
       case ObjExpr(m) =>
         val r = freshVar
         val objectConstVar = new AnonymousVariable()
         val objectConstStmt = ConstAssignment(objectConstVar, "Object")
-        var result: Statement = Constructor(r, objectConstVar, Nil) ++ objectConstStmt
+        var result: CFGNode = Constructor(r, objectConstVar, Nil) ++ objectConstStmt
         for (field <- m) {
           val (s, v) = _buildExpressionStmt(field._2)
           result = Store(r, field._1, v) ++ s ++ result
@@ -374,7 +412,7 @@ object CFGBuilder {
         val r = freshVar
         val objectConstVar = new AnonymousVariable()
         val objectConstStmt = ConstAssignment(objectConstVar, "Array")
-        var result: Statement = Constructor(r, objectConstVar, Nil) ++ objectConstStmt
+        var result: CFGNode = Constructor(r, objectConstVar, Nil) ++ objectConstStmt
         for (field <- m) {
           val (s, v) = _buildExpressionStmt(field)
           result = Store(r, "__elements__", v) ++ s ++ result
@@ -388,25 +426,28 @@ object CFGBuilder {
   }
 
 
-  private def copyPosition(s: Statement, pos: Positional): Statement = s match {
-    case Sequence(inner: Statement) => inner.foreach(_.copyPosition(pos)); s.copyPosition(pos)
-    case s => s.copyPosition(pos)
+  private def copyPosition(s: CFGNode, pos: Positional): CFGNode = {
+    s.s.foreach(_.copyPosition(pos));
+    s
+  }
+
+  private def copyPosition(s: Instruction, pos: Positional): Instruction = {
+    s.copyPosition(pos);
+    s
   }
 
 }
 
 
-trait Statement extends Positional {
-  def ++(s: Statement) = s match {
-    case e: EmptyStatement => this
-    case Sequence(i) => Sequence(this :: i)
-    case _ => Sequence(List(this, s))
-  }
+trait Instruction extends Positional {
+  def ++(s: Instruction) = toBlock ++ s
 
-  def ++(s: Sequence) = Sequence(this :: s.s)
+  def ++(s: Block) = Block(this :: s.s)
+
+  def toBlock = Block(List(this))
 
   override def equals(o: scala.Any): Boolean = o match {
-    case that: Statement => this eq that
+    case that: Instruction => this eq that
     case _ => false
   }
 
@@ -418,59 +459,57 @@ trait Statement extends Positional {
 
 }
 
-case class Sequence(s: List[Statement]) extends Statement {
-  override def ++(that: Statement) = that match {
-    case e: EmptyStatement => this
-    case Sequence(i) => Sequence(s ++ i)
-    case _ => Sequence(s :+ that)
+/**
+  * a block contains a list of instructions; the
+  * first instruction is at the tail of the list and later
+  * instructions are added to the head
+  * @param s
+  */
+case class Block(s: List[Instruction]) {
+  def ++(that: Instruction) = Block(s :+ that)
+
+
+  def ++(that: Block) = Block(s ++ that.s)
+
+  override def equals(o: scala.Any): Boolean = o match {
+    case that: Block => this eq that
+    case _ => false
   }
-
-  override def ++(that: Sequence) = Sequence(this.s ++ that.s)
-
 }
 
-class EmptyStatement() extends Statement {
-  override def ++(s: Statement) = s
+object Block {
+  def empty(): Block = Block(Nil)
 }
 
-object EmptyStatement {
-  def apply() = new EmptyStatement()
+
+case class Assignment(l: Variable, r: Variable) extends Instruction
+
+case class PrimAssignment(l: Variable) extends Instruction
+
+case class ConstAssignment(l: Variable, v: String) extends Instruction
+
+case class OpInstruction(result: Variable, v1: Variable, v2: Variable) extends Instruction
+
+case class Constructor(result: Variable, name: Variable, params: List[Variable]) extends Instruction
+
+case class Call(result: Variable, name: Variable, vthis: Variable, params: List[Variable]) extends Instruction
+
+case class Load(result: Variable, v: Variable, field: String) extends Instruction
+
+case class Store(target: Variable, field: String, v: Variable) extends Instruction
+
+case class FunDecl(v: Variable, fun: Fun) extends Instruction {
+  override def toString: String = s"FunDecl($v, ${fun.uniqueId})"
 }
 
-case class Assignment(l: Variable, r: Variable) extends Statement
 
-case class PrimAssignment(l: Variable) extends Statement
-
-case class ConstAssignment(l: Variable, v: String) extends Statement
-
-case class OpStatement(result: Variable, v1: Variable, v2: Variable) extends Statement
-
-///**
-//  * return is modeled as assignment to a special return variable
-//  */
-//object Return extends Statement {
-//  def apply(l: Variable) = Assignment(l, AnalysisHelper.returnVariable)
-//}
-//
-///**
-//  * throw is modeled as assignment to a special variable
-//  */
-//object Throw extends Statement {
-//  def apply(l: Variable) = Assignment(l, AnalysisHelper.exceptionVariable)
-//}
-
-case class Constructor(result: Variable, name: Variable, params: List[Variable]) extends Statement
-
-case class Call(result: Variable, name: Variable, vthis: Variable, params: List[Variable]) extends Statement
-
-case class Load(result: Variable, v: Variable, field: String) extends Statement
-
-case class Store(target: Variable, field: String, v: Variable) extends Statement
-
-case class FunDecl(v: Variable, args: List[LocalVariable], localVariables: List[LocalVariable], body: Statement) extends Statement {
+/**
+  * a function is a unit of analysis
+  * functions form a tree structure depending on their nesting when defined
+  */
+case class Fun(body: CFG,
+               args: List[LocalVariable], localVariables: Set[LocalVariable], closureVariables: Set[ExternalVariable],
+               innerFunctions: Set[Fun]) {
   lazy val uniqueId = Integer.toHexString(hashCode()) + "#"
+
 }
-
-case class ConditionalStatement(alt1: Statement, alt2: Statement) extends Statement
-
-case class LoopStatement(inner: Statement) extends Statement

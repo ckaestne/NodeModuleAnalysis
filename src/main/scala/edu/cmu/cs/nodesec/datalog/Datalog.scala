@@ -12,7 +12,7 @@ import scala.collection.JavaConverters._
   */
 
 
-sealed abstract class DRelation(fun: FunDecl) {
+sealed abstract class DRelation(fun: Fun) {
   def prefix = fun.uniqueId
 
   def predicate: String
@@ -24,57 +24,57 @@ sealed abstract class DRelation(fun: FunDecl) {
   override def toString: String = predicate + terms.map('"' + _ + '"').mkString("(", ", ", ").")
 }
 
-case class DFormal(fun: FunDecl, idx: Int, obj: Value) extends DRelation(fun) {
+case class DFormal(fun: Fun, idx: Int, obj: Value) extends DRelation(fun) {
   def predicate = "formal"
 
   def terms = prefix :: Integer.toString(idx + 1) :: prefix + obj :: Nil
 }
 
-case class DReturn(fun: FunDecl, obj: Value) extends DRelation(fun) {
+case class DReturn(fun: Fun, obj: Value) extends DRelation(fun) {
   def predicate = "return"
 
   def terms = prefix :: prefix + obj :: Nil
 }
 
-case class DMember(fun: FunDecl, obj: Value, field: String, fieldValue: Value) extends DRelation(fun) {
+case class DMember(fun: Fun, obj: Value, field: String, fieldValue: Value) extends DRelation(fun) {
   def predicate = "member"
 
   def terms = prefix + obj :: field :: prefix + fieldValue :: Nil
 
 }
 
-case class DActual(fun: FunDecl, targetObj: Value, idx: Int, value: Value) extends DRelation(fun) {
+case class DActual(fun: Fun, targetObj: Value, idx: Int, value: Value) extends DRelation(fun) {
   def predicate = "actual"
 
   def terms = prefix + targetObj :: Integer.toString(idx + 1) :: prefix + value :: Nil
 }
 
-case class DInvoke(fun: FunDecl, targetObj: Value, returnObj: Value) extends DRelation(fun) {
+case class DInvoke(fun: Fun, targetObj: Value, returnObj: Value) extends DRelation(fun) {
   def predicate = "invoke"
 
   def terms = prefix :: prefix + targetObj :: prefix + returnObj :: Nil
 }
 
-case class DFunctionDecl(fun: FunDecl, obj: Value, targetFun: FunDecl) extends DRelation(fun) {
+case class DFunctionDecl(fun: Fun, obj: Value, targetFun: Fun) extends DRelation(fun) {
   def predicate = "functiondecl"
 
   def terms = prefix :: prefix + obj :: targetFun.uniqueId :: Nil
 }
 
-case class DScope(fun: FunDecl, kind: String, scopeObj: Value) extends DRelation(fun) {
+case class DScope(fun: Fun, kind: String, scopeObj: Value) extends DRelation(fun) {
   def predicate = "scope"
 
   def terms = prefix :: kind :: prefix + scopeObj :: Nil
 }
 
 
-case class DStore(fun: FunDecl, obj: Value, field: String, fieldValue: Value) extends DRelation(fun) {
+case class DStore(fun: Fun, obj: Value, field: String, fieldValue: Value) extends DRelation(fun) {
   def predicate = "store"
 
   def terms = prefix + obj :: field :: prefix + fieldValue :: Nil
 }
 
-case class DLoad(fun: FunDecl, obj: Value, field: String, fieldValue: Value) extends DRelation(fun) {
+case class DLoad(fun: Fun, obj: Value, field: String, fieldValue: Value) extends DRelation(fun) {
   def predicate = "load"
 
   def terms = prefix + obj :: field :: prefix + fieldValue :: Nil

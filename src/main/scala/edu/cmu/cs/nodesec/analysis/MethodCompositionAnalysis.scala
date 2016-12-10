@@ -18,20 +18,20 @@ object MethodCompositionAnalysis {
   }
 
   trait Policy {
-    def apply(datalog: Datalog, mainFun: FunDecl, methodSummaries: Set[(FunDecl, Env)]): Seq[PolicyViolation]
+    def apply(datalog: Datalog, mainFun: Fun, methodSummaries: Set[(Fun, Env)]): Seq[PolicyViolation]
 
     def +(that: Policy): Policy = new ComposedPolicy(this, that)
   }
 
 
   class ComposedPolicy(p1: Policy, p2: Policy) extends Policy {
-    def apply(d: Datalog, f: FunDecl, s: Set[(FunDecl, Env)]) = p1(d, f, s) ++ p2(d, f, s)
+    def apply(d: Datalog, f: Fun, s: Set[(Fun, Env)]) = p1(d, f, s) ++ p2(d, f, s)
   }
 
   class NoCallToRequire extends Policy {
 
 
-    def apply(d: Datalog, f: FunDecl, methodSummaries: Set[(FunDecl, Env)]) = {
+    def apply(d: Datalog, f: Fun, methodSummaries: Set[(Fun, Env)]) = {
       println(d.rule(Expr("callToRequire", "X", "REQOBJ"), /*:-*/ Expr("invoke", "F", "A", "X"), Expr("pt", "A", "REQOBJ")))
       val result = stripQuotes(d.query("callToRequire", "X", "\"" + f.uniqueId + "param-require\""))
 
@@ -47,11 +47,11 @@ object MethodCompositionAnalysis {
 
   private def stripQuotes(r: Seq[Map[String, String]]): Seq[Map[String, String]] = r.map(_.mapValues(stripQuotes))
 
-  private def getFunctionCallPositionByRetObj(retObjString: String, methodSummaries: Set[(FunDecl, Env)]): Position = {
-    for ((fun, env) <- methodSummaries;
+  private def getFunctionCallPositionByRetObj(retObjString: String, methodSummaries: Set[(Fun, Env)]): Position = {
+    for ((fun, env) <- methodSummaries
          if retObjString startsWith fun.uniqueId;
          (call, retVals) <- env.calls;
-         retVal <- retVals;
+         retVal <- retVals
          if (fun.uniqueId + retVal) == retObjString
     ) return call.pos
     return NoPosition
@@ -60,7 +60,7 @@ object MethodCompositionAnalysis {
   lazy val noCallToRequire = new NoCallToRequire
 
   val noWriteToClosure = new Policy {
-    override def apply(datalog: Datalog, mainFun: FunDecl, methodSummaries: Set[(FunDecl, Env)]): Seq[PolicyViolation] = {
+    override def apply(datalog: Datalog, mainFun: Fun, methodSummaries: Set[(Fun, Env)]): Seq[PolicyViolation] = {
       datalog.loadRules("reaches(A,B) :- member(A,F,B).\n" +
         "reaches(A,B) :- member(A,F,C), reaches(C,B).\n" +
         "writeToClosure(W,F) :- store(W, F, U2), reaches(O, W), scope(U3, \"closure\", O).\n" +
@@ -75,7 +75,7 @@ object MethodCompositionAnalysis {
   }
 
   val noReadFromGlobal = new Policy {
-    override def apply(datalog: Datalog, mainFun: FunDecl, methodSummaries: Set[(FunDecl, Env)]): Seq[PolicyViolation] = {
+    override def apply(datalog: Datalog, mainFun: Fun, methodSummaries: Set[(Fun, Env)]): Seq[PolicyViolation] = {
       val globalObj = methodSummaries.find(_._1 == mainFun).get._2.closureObj
       datalog.loadRules("readFromGlobal(G,F) :- load(G, F, U2).\n" +
         "readFromGlobal(G,F) :- pt(X, G), load(X, F, U2)."
@@ -89,7 +89,7 @@ object MethodCompositionAnalysis {
   }
 
   val noPrototype = new Policy {
-    override def apply(datalog: Datalog, mainFun: FunDecl, methodSummaries: Set[(FunDecl, Env)]): Seq[PolicyViolation] = {
+    override def apply(datalog: Datalog, mainFun: Fun, methodSummaries: Set[(Fun, Env)]): Seq[PolicyViolation] = {
       datalog.loadRules("accessToPrototype(X,Y) :- member(X, \"prototype\", Y).\n" +
         "accessToPrototype(X,Y) :- member(X, \"__proto__\", Y)."
       )
@@ -102,7 +102,7 @@ object MethodCompositionAnalysis {
   }
 
   val noForbiddenGlobalObjects = new Policy {
-    override def apply(datalog: Datalog, mainFun: FunDecl, methodSummaries: Set[(FunDecl, Env)]): Seq[PolicyViolation] = {
+    override def apply(datalog: Datalog, mainFun: Fun, methodSummaries: Set[(Fun, Env)]): Seq[PolicyViolation] = {
       val globalObj = methodSummaries.find(_._1 == mainFun).get._2.closureObj
       datalog.loadRules("readFromGlobal(G,F) :- load(G, F, U2).\n" +
         "readFromGlobal(G,F) :- pt(X, G), load(X, F, U2).\n" +
@@ -120,7 +120,7 @@ object MethodCompositionAnalysis {
   val noAlwaysUnresolvedFunctionCalls = new Policy {
     //we cannot ask whether it is always resolved, only whether it is at least sometimes resolved
     //debugging rather than security check
-    override def apply(datalog: Datalog, mainFun: FunDecl, methodSummaries: Set[(FunDecl, Env)]): Seq[PolicyViolation] = {
+    override def apply(datalog: Datalog, mainFun: Fun, methodSummaries: Set[(Fun, Env)]): Seq[PolicyViolation] = {
       val globalObj = methodSummaries.find(_._1 == mainFun).get._2.closureObj
       datalog.loadRules("hasCall(X):-call(U1, U2, X, U3).\n" +
         "alwaysUnresolvedFunctionCalls(F, X) :- invoke(F, U3, X), not hasCall(X).")
@@ -138,32 +138,25 @@ object MethodCompositionAnalysis {
     noReadFromGlobal +
     noWriteToClosure +
     noCallToRequire
-}
-
-class MethodCompositionAnalysis {
 
   import AnalysisHelper._
-  import MethodCompositionAnalysis._
-
-  def collectFunDecls(s: Statement): Set[FunDecl] = s match {
-    case f: FunDecl => collectFunDecls(f.body) + f
-    case Sequence(inner) => inner.foldLeft(Set[FunDecl]())(_ ++ collectFunDecls(_))
-    case LoopStatement(inner) => collectFunDecls(inner)
-    case ConditionalStatement(a, b) => collectFunDecls(a) ++ collectFunDecls(b)
-    case _ => Set()
-  }
+  import VariableHelper._
 
 
   def analyzeScript(p: FunctionBody, policy: Policy, withGlobals: Boolean = false): Seq[PolicyViolation] = {
-    val fun = AnalysisHelper.wrapScript(p)
-    analyze(if (withGlobals) AnalysisHelper.wrapWithGlobals(fun) else fun, policy, Some(fun))
+    val fun = if (withGlobals) cfgWithGlobals(p) else cfgScript(p)
+    analyze(fun, policy, Some(fun))
   }
 
-  def analyze(fun: FunDecl, policy: Policy, mainFun: Option[FunDecl] = None): Seq[PolicyViolation] = {
-    val funDecls = collectFunDecls(fun)
+  def getAllInnerFun(fun: Fun): Set[Fun] =
+    fun.innerFunctions.map(getAllInnerFun).flatten + fun
 
-    val summaries = for (funDecl <- funDecls)
-      yield (funDecl, new IntraMethodAnalysis().analyze(funDecl))
+  def analyze(fun: Fun, policy: Policy, mainFun: Option[Fun] = None): Seq[PolicyViolation] = {
+    var functions = getAllInnerFun(fun)
+
+
+    val summaries = for (fun <- functions)
+      yield (fun, new IntraMethodAnalysis().analyze(fun))
 
     val result = compose(summaries)
 
@@ -178,7 +171,7 @@ class MethodCompositionAnalysis {
     * context insensitive for now (context sensitivity through copying requires cycle detection
     * for calls among modules first)
     */
-  def compose(methodSummaries: Set[(FunDecl, Env)]): Datalog = {
+  def compose(methodSummaries: Set[(Fun, Env)]): Datalog = {
 
     //    var inclusionEdges: Set[(Obj, Obj)] = Set()
 
@@ -223,8 +216,8 @@ class MethodCompositionAnalysis {
 
     println(datalog.ruleStr + "%%%")
 
-    for ((method, summary) <- methodSummaries) {
-      val facts = summaryToDatalog(method, summary)
+    for ((function, summary) <- methodSummaries) {
+      val facts = summaryToDatalog(function, summary)
       facts.foreach(datalog.load)
       facts.map(println)
       println("%")
@@ -234,7 +227,7 @@ class MethodCompositionAnalysis {
     datalog
   }
 
-  def summaryToDatalog(fun: FunDecl, env: Env): List[DRelation] = {
+  def summaryToDatalog(fun: Fun, env: Env): List[DRelation] = {
     var result: List[DRelation] = Nil
 
     for ((arg, idx) <- fun.args.zipWithIndex;

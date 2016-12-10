@@ -5,7 +5,9 @@ object VariableHelper {
   def freshVar = new AnonymousVariable()
 
   val thisVar = new LocalVariable("this")
-  val emptyStatement = Sequence(Nil)
+
+  val returnVariable = LocalVariable("$return")
+  val exceptionVariable = LocalVariable("$exception")
 }
 
 trait Variable

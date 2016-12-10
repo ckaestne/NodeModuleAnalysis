@@ -17,7 +17,7 @@ abstract class AbstractAnalysisTest extends FunSuite {
   def reject(prog: String, policies: Policy*): Unit = {
     assert(policies.nonEmpty, "no policies provided")
     val vm = parse(prog)
-    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policies.reduce(_ + _))
+    val policyViolations = MethodCompositionAnalysis.analyzeScript(vm, policies.reduce(_ + _))
     println(policyViolations.map(_.render).mkString("\n"))
     assert(policyViolations.nonEmpty, "policy violation expected, but not found")
   }
@@ -25,7 +25,7 @@ abstract class AbstractAnalysisTest extends FunSuite {
   def pass(prog: String, policies: Policy*): Unit = {
     assert(policies.nonEmpty, "no policies provided")
     val vm = parse(prog)
-    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policies.reduce(_ + _))
+    val policyViolations = MethodCompositionAnalysis.analyzeScript(vm, policies.reduce(_ + _))
     assert(policyViolations.isEmpty, "policy violation found:\n" + policyViolations.map(_.render).mkString("\n"))
   }
 
@@ -33,14 +33,14 @@ abstract class AbstractAnalysisTest extends FunSuite {
   def passFile(file: String, policies: Policy*): Unit = {
     assert(policies.nonEmpty, "no policies provided")
     val vm = parseFile(file)
-    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policies.reduce(_ + _), true)
+    val policyViolations = MethodCompositionAnalysis.analyzeScript(vm, policies.reduce(_ + _), true)
     assert(policyViolations.isEmpty, "policy violation found:\n" + policyViolations.map(_.render).mkString("\n"))
   }
 
   def rejectFile(file: String, policies: Policy*): Unit = {
     assert(policies.nonEmpty, "no policies provided")
     val vm = parseFile(file)
-    val policyViolations = new MethodCompositionAnalysis().analyzeScript(vm, policies.reduce(_ + _), true)
+    val policyViolations = MethodCompositionAnalysis.analyzeScript(vm, policies.reduce(_ + _), true)
     assert(policyViolations.nonEmpty, "policy violation expected, but not found")
   }
 
