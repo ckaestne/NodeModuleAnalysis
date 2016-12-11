@@ -30,10 +30,10 @@ class IntraMethodAnalysis {
   type Field = String
 
 
-  def analyzeScript(fun: FunctionBody): Env =
+  def analyzeScript(fun: FunctionBody): MethodSummary =
     analyze(AnalysisHelper.cfgScript(fun))
 
-  def analyze(fun: Fun): Env = {
+  def analyze(fun: Fun): MethodSummary = {
     //initialize store with parameters and return value; assign all parameters and local variables as members of the scope
     val closureScopeObj: Obj = Param("$closure")
     val localScopeObj: Obj = Param("$local")
@@ -44,7 +44,7 @@ class IntraMethodAnalysis {
       (params ++ locals).toMap + (returnVariable -> Set(PrimitiveValue))
     val members: Map[Obj, Map[String, Set[Value]]] =
       Map(localScopeObj -> (params ++ locals).map(a => (a._1.name, a._2)).toMap)
-    val env = Env.empty.copy(store = store, members = members, localScopeObj = localScopeObj, closureObj = closureScopeObj)
+    val env = MethodSummary.empty.copy(store = store, members = members, localScopeObj = localScopeObj, closureObj = closureScopeObj)
     analyzeCFG(env, fun.body)
   }
 
@@ -56,9 +56,9 @@ class IntraMethodAnalysis {
   //    result
   //  }
 
-  private def analyzeCFG(initialEnv: Env, cfg: CFG): Env = {
+  private def analyzeCFG(initialEnv: MethodSummary, cfg: CFG): MethodSummary = {
     //simple worklist algorithm
-    var inputEnvs: Map[Block, Env] = Map(cfg.entry -> initialEnv)
+    var inputEnvs: Map[Block, MethodSummary] = Map(cfg.entry -> initialEnv)
     var worklist: Seq[Block] = bfs(cfg)
     while (worklist.nonEmpty) {
       val block = worklist.head
@@ -97,10 +97,10 @@ class IntraMethodAnalysis {
 
   //apply to every statement, from tail to head (due to reverse
   //instruction order in block.s)
-  private def transfer(env: Env, p: Block): Env =
+  private def transfer(env: MethodSummary, p: Block): MethodSummary =
   p.s.foldRight(env)((s, env) => transfer(env, s))
 
-  private def transfer(env: Env, p: Instruction): Env = p match {
+  private def transfer(env: MethodSummary, p: Instruction): MethodSummary = p match {
     case Assignment(l, r) =>
       val (v, newEnv) = env.lookup(r)
       newEnv.store(l, v)
@@ -146,7 +146,7 @@ class IntraMethodAnalysis {
   }
 
 
-  private def lookupArgs(env: Env, args: List[Variable]): String =
+  private def lookupArgs(env: MethodSummary, args: List[Variable]): String =
     args.map(env.lookup).map(_._1.mkString("[", ",", "]")).mkString(", ")
 
 

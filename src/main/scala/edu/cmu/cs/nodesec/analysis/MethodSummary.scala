@@ -5,7 +5,7 @@ package edu.cmu.cs.nodesec.analysis
   */
 
 
-case class Env(
+case class MethodSummary(
                 store: Map[Variable, Set[Value]],
                 members: Map[Obj, Map[String, Set[Value]]],
                 calls: Map[Call, Set[MethodReturnValue]],
@@ -20,7 +20,7 @@ case class Env(
   def lookupOpt(name: Variable): Option[Set[Value]] = store.get(name)
 
 
-  def lookup(v: Variable): (Set[Value], Env) = v match {
+  def lookup(v: Variable): (Set[Value], MethodSummary) = v match {
     //named variables are actually fields of the scope
     case LocalVariable(n) =>
       this.lookupFieldFromObj(localScopeObj, n, () => new UnknownValue("$scope-" + n))
@@ -31,7 +31,7 @@ case class Env(
   }
 
   //assignment killing previous assignments
-  def store(name: Variable, value: Set[Value]): Env = name match {
+  def store(name: Variable, value: Set[Value]): MethodSummary = name match {
     //named variables are actually fields of the scope
     case LocalVariable(n) =>
       storeField(localScopeObj, n, value)
@@ -42,7 +42,7 @@ case class Env(
 
   //    def kill(name: Variable): Env = this.copy(store = store - name)
 
-  def storeField(v1: Variable, f: String, values: Set[Value]): Env = {
+  def storeField(v1: Variable, f: String, values: Set[Value]): MethodSummary = {
     //stores to Primitive types are ignored
     var (vals, env) = lookup(v1)
     vals foreach {
@@ -53,7 +53,7 @@ case class Env(
     env
   }
 
-  def storeField(o: Obj, f: String, values: Set[Value]): Env = {
+  def storeField(o: Obj, f: String, values: Set[Value]): MethodSummary = {
     val omembers = members.getOrElse(o, Map())
     this.copy(
       members = members + (o -> (omembers + (f -> values))),
@@ -61,7 +61,7 @@ case class Env(
     )
   }
 
-  def lookupField(v: Variable, f: String, loadStmt: Option[Load]): (Set[Value], Env) = {
+  def lookupField(v: Variable, f: String, loadStmt: Option[Load]): (Set[Value], MethodSummary) = {
     //a little complicated, because we want to reflect every read as a change
     //to the environment, such that the next read will produce the same
     //unknown object
@@ -82,7 +82,7 @@ case class Env(
     (result, env)
   }
 
-  private def lookupFieldFromObj(o: Obj, f: String, createIfNotExists: () => Obj): (Set[Value], Env) = recordReads(o, f, {
+  private def lookupFieldFromObj(o: Obj, f: String, createIfNotExists: () => Obj): (Set[Value], MethodSummary) = recordReads(o, f, {
     val newEnv = if (!members.contains(o))
       this.copy(members = members + (o -> Map(f -> Set[Value](createIfNotExists()))))
     else this
@@ -94,7 +94,7 @@ case class Env(
   })
 
   // record in `reads` set every time a value is read from an object
-  private def recordReads(o: Obj, f: String, read: (Set[Value], Env)): (Set[Value], Env) =
+  private def recordReads(o: Obj, f: String, read: (Set[Value], MethodSummary)): (Set[Value], MethodSummary) =
   (read._1, read._2.copy(reads = read._2.reads ++ read._1.map(v => (o, f, v))))
 
 
@@ -124,10 +124,10 @@ case class Env(
   private def findDirectBases(o: Obj): Set[Obj] = members.filter(_._2.exists(_._2 contains o)).keySet
 
 
-  def union(that: Env): Env = {
+  def union(that: MethodSummary): MethodSummary = {
     assert(this.localScopeObj == that.localScopeObj)
     assert(this.closureObj == that.closureObj)
-    Env(relUnion(this.store, that.store, () => Set()),
+    MethodSummary(relUnion(this.store, that.store, () => Set()),
       rel3Union(this.members, that.members, () => Set()),
       relUnion(this.calls, that.calls, () => Set()),
       this.functionPtrs ++ that.functionPtrs,
@@ -147,13 +147,13 @@ case class Env(
   }
 
 
-  def addCall(c: Call, retVal: MethodReturnValue): Env =
+  def addCall(c: Call, retVal: MethodReturnValue): MethodSummary =
     this.copy(calls = calls + (c -> (calls.getOrElse(c, Set()) + retVal)))
 
-  def addFunctionPtr(funObj: FunctionValue, fun: Fun): Env = copy(functionPtrs = functionPtrs.+((funObj, fun)))
+  def addFunctionPtr(funObj: FunctionValue, fun: Fun): MethodSummary = copy(functionPtrs = functionPtrs.+((funObj, fun)))
 
 }
 
-object Env {
-  def empty = Env(Map(), Map(), Map(), Set(), Set(), Set(), new Obj(), new Obj())
+object MethodSummary {
+  def empty = MethodSummary(Map(), Map(), Map(), Set(), Set(), Set(), new Obj(), new Obj())
 }

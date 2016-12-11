@@ -42,7 +42,7 @@ object AnalysisHelper {
   def cfgScript(script: FunctionBody): Fun =
     CFGBuilder.toFun(wrapScript(script))
 
-  def summarizeFunction(fun: Fun): Env =
+  def summarizeFunction(fun: Fun): MethodSummary =
     new IntraMethodAnalysis().analyze(fun)
 
 }
