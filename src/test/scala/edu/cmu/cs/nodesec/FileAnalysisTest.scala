@@ -1,14 +1,12 @@
 package edu.cmu.cs.nodesec
 
-import edu.cmu.cs.nodesec.analysis._
-
 
 /**
   * Created by ckaestne on 11/24/16.
   */
 class FileAnalysisTest extends AbstractAnalysisTest {
 
-  import MethodCompositionAnalysis._
+  import edu.cmu.cs.nodesec.analysis.Policies._
 
   test("test.js") {
     passFile("src/test/resources/test.js", noAlwaysUnresolvedFunctionCalls +

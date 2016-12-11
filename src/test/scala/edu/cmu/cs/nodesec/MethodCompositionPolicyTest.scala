@@ -1,17 +1,11 @@
 package edu.cmu.cs.nodesec
 
-import edu.cmu.cs.nodesec.analysis._
-import edu.cmu.cs.nodesec.parser.JSParser
-import org.scalatest.FunSuite
-
+import edu.cmu.cs.nodesec.analysis.Policies._
 
 /**
   * Created by ckaestne on 11/24/16.
   */
-class MethodCompositionTest extends AbstractAnalysisTest {
-
-
-  import MethodCompositionAnalysis._
+class MethodCompositionPolicyTest extends AbstractAnalysisTest {
 
   test("return and closure") {
     reject(
@@ -134,6 +128,21 @@ class MethodCompositionTest extends AbstractAnalysisTest {
         | x = require;
         |}
         |foo();
+        |x();
+      """.stripMargin, noCallToRequire)
+    //flow sensitivity only works within a method, not through closures
+    //at the end of this method, x may point to bar, to require, or to 3
+    reject(
+      """
+        |var x = function bar(){};;
+        |function a() {
+        | x = require;
+        |}
+        |function b() {
+        | x = 3;
+        |}
+        |a();
+        |b();
         |x();
       """.stripMargin, noCallToRequire)
   }

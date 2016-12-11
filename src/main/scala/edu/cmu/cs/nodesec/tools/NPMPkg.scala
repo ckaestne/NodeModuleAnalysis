@@ -4,7 +4,7 @@ import java.io._
 
 import edu.cmu.cs.nodesec.analysis.AnalysisHelper._
 import edu.cmu.cs.nodesec.analysis.MethodCompositionAnalysis
-import edu.cmu.cs.nodesec.analysis.MethodCompositionAnalysis.noCallToRequire
+import edu.cmu.cs.nodesec.analysis.Policies._
 import edu.cmu.cs.nodesec.parser.JSASTParser
 
 import scala.sys.process._

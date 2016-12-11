@@ -116,3 +116,11 @@ class Datalog {
     jatalog.query(new DLExpr(predicate, terms.map(t => if (t startsWith "\"") t.dropRight(1) else t).asJava)).
       asScala.toSeq.map(_.asScala.toMap.mapValues(s => if (s startsWith "\"") s + "\"" else s))
 }
+
+/** helper functions */
+object Datalog {
+  def stripQuotes(s: String): String = if (s startsWith "\"") s.drop(1).dropRight(1) else s
+
+  def stripQuotes(r: Seq[Map[String, String]]): Seq[Map[String, String]] = r.map(_.mapValues(stripQuotes))
+
+}
