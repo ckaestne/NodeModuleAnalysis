@@ -71,7 +71,7 @@ object Policies {
       //because we may read from things that are not known objects on the
       //stack
       val rules = f.allClosureVariables.map("closurevar(\"" + f.uniqueId + _ + "\").\n").mkString +
-        //        "closurevar(V):-closurevar(X),closure2closure(X,V).\n" +
+        "closurevar(V):-closurevar(X),closure2closure(X,V).\n" +
         "varFromClosure(V):-closurevar(V).\n" +
         "varFromClosure(X):-assign(X,Y),varFromClosure(Y).\n" +
         "varFromClosure(X):-varFromClosure(Y),load(X,Y,F).\n" +
@@ -91,12 +91,14 @@ object Policies {
     }
   }
 
-  private val noReadFromClosureRules = "closurevar(V):-closurevar(X),closure2closure(X,V).\n" +
-    "readFromClosure(V):-assign(X,V), closurevar(V).\n" +
-    "readFromClosure(V):-store(X,F,V), closurevar(V).\n" +
-    "readFromClosure(V):-invoke(U1,V,U2), closurevar(V).\n" +
-    "readFromClosure(V):-actual(U1,U2,V), closurevar(V).\n" +
-    "readFromClosure(V):-load(X,V,F), closurevar(V).\n"
+  private val noReadFromClosureRules =
+    "closurevar(V):-closurevar(X),closure2closure(X,V).\n" +
+      "closurevar(V):-closurevar(X),closure2closure(V,X).\n" +
+      "readFromClosure(V):-assign(X,V), closurevar(V).\n" +
+      "readFromClosure(V):-store(X,F,V), closurevar(V).\n" +
+      "readFromClosure(V):-invoke(U1,V,U2), closurevar(V).\n" +
+      "readFromClosure(V):-actual(U1,U2,V), closurevar(V).\n" +
+      "readFromClosure(V):-load(X,V,F), closurevar(V)."
 
   val noReadFromClosure = new Policy {
     override def apply(datalog: Datalog, f: Fun): Seq[PolicyViolation] = {
@@ -134,7 +136,9 @@ object Policies {
       val rules =
         forbiddenClosureVariables.map("forbiddenGlobal(\"" + f.uniqueId + new ExternalVariable(_) + "\").\n").mkString +
           f.allClosureVariables.map("closurevar(\"" + f.uniqueId + _ + "\").\n").mkString +
-          noReadFromClosureRules +
+          noReadFromClosureRules + "\n" +
+          "forbiddenGlobal(X):-forbiddenGlobal(V),closure2closure(X,V).\n" +
+          "forbiddenGlobal(X):-forbiddenGlobal(V),closure2closure(V,X).\n" +
           "accessToForbiddenGlobals(G):-readFromClosure(G),forbiddenGlobal(G)."
       println(datalog.loadRules(rules))
       val result = stripQuotes(datalog.query("accessToForbiddenGlobals", "F"))
@@ -173,12 +177,12 @@ object Policies {
   }
 
   def allPolicies =
-  //    noAlwaysUnresolvedFunctionCalls +
-  //    noForbiddenGlobalObjects +
-  //    noPrototype +
-  //    noReadFromGlobal +
-  //    noWriteToClosure +
-    noCallToRequire
+    noAlwaysUnresolvedFunctionCalls +
+      noForbiddenGlobalObjects +
+      noPrototype +
+      noReadFromClosure +
+      noWriteToClosure +
+      noCallToRequire
 
 
   private def getFunctionCallPositionByRetObj(retObjString: String, fun: Fun): Position = {

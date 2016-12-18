@@ -36,11 +36,23 @@ object AnalysisHelper {
     FunctionBody(call :: globals.inner)
   }
 
-  def cfgWithGlobals(script: FunctionBody): Fun =
-    CFGBuilder.toFun(wrapScript(wrapWithGlobals(script)))
+  /**
+    * turn a script/module into a CFG
+    *
+    * this injects the module, require, and export arguments, but
+    * also provides global objects such as `console` from
+    * `global.js`
+    */
+  def cfgWithGlobals(scriptAst: FunctionBody): Fun =
+    CFGBuilder.toFun(wrapScript(wrapWithGlobals(scriptAst)))
 
-  def cfgScript(script: FunctionBody): Fun =
-    CFGBuilder.toFun(wrapScript(script))
+  /**
+    * turn a script/module (i.e. some code that is wrapped
+    * by the function providing the module, require, exports arguments)
+    * into a CFG
+    */
+  def cfgScript(scriptAst: FunctionBody): Fun =
+    CFGBuilder.toFun(wrapScript(scriptAst))
 
   //  def summarizeFunction(fun: Fun): MethodSummary =
   //    new IntraMethodAnalysis().analyze(fun)

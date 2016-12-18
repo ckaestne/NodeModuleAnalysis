@@ -70,7 +70,7 @@ abstract class AbstractAnalysisTest extends FunSuite {
 
 
   def checkPolicy(ast: FunctionBody, policy: Policy): Seq[PolicyViolation] = {
-    val fun = AnalysisHelper.cfgScript(ast)
+    val fun = AnalysisHelper.cfgWithGlobals(ast)
     fun.body.nodes.toList.flatMap(_.s.reverse).foreach(println)
     val facts = MethodFactCollector.collectFacts(fun)
 
