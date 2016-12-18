@@ -8,13 +8,26 @@ import edu.cmu.cs.nodesec.datalog.Datalog
 object InferenceRules {
 
   def loadRules(datalog: Datalog): Unit = {
-    //assignments
+    //assignments, load, store
     var rules =
     "%% global inference rules\n" +
       "stack(V,O):-stack(V2,O), assign(V, V2). \n" +
       "heap(O1,F,O2):-store(V1,F,V2), stack(V1,O1), stack(V2,O2).\n" +
       "stack(V2,O2):-load(V2,V1,F),heap(O1,F,O2),stack(V1,O1).\n"
 
+    //method composition (merge closures)
+    rules +=
+    "stack(V1,O):-stack(V2,O),closure2local(V1,V2).\n" +
+      "stack(V1,O):-stack(V2,O),closure2local(V2,V1).\n"
+
+    //method calls
+    rules +=
+    //helper: from origin OFUNID (with object representing the target TARGETOBJ and the resulting value RETVAL) to the target function TFUNID
+    "call(OFUNID,TARGETVAR,RETVAR,TFUNID) :- invoke(OFUNID,TARGETVAR,RETVAR), stack(TARGETVAR, TARGETOBJ), functiondecl(TARGETOBJ, TFUNID).\n" +
+    //link returned value of function call to return-value of the target function
+      "assign(R, O) :- call(U1, U2, R, F), return(F, O).\n" +
+    //link formal parameter to actual parameter
+      "assign(A, B) :- actual(T, Z, B), call(U1, T, X, F), formal(F, Z, A).\n"
 
 
     //    rules +=

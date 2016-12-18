@@ -34,15 +34,18 @@ object MethodFactCollector {
           DActual(fun, name, idx, param)
         actuals :+ DInvoke(fun, name, r)
       case Load(r, v, f) =>
-        val newObj = new Obj("toObj-"+NameHelper.genObjectName)
+        val newObj = new Obj("toObj-" + NameHelper.genObjectName)
         Set(DLoad(fun, r, v, f), DStack(fun, v, newObj))
       case Store(r, f, v) =>
-        val newObj = new Obj("toObj-"+NameHelper.genObjectName)
+        val newObj = new Obj("toObj-" + NameHelper.genObjectName)
         Set(DStore(fun, r, f, v), DStack(fun, r, newObj))
       case FunDecl(r, f) =>
-        Set(DFunctionDecl(fun, r, f))
+        val fobj = new Obj("fun-" + NameHelper.genObjectName)
+        Set(DFunctionDecl(fun, fobj, f), DStack(fun, r, fobj))
     }
-    var declFacts = (for ((formal, idx) <- fun.args.zipWithIndex) yield DFormal(fun, idx, formal))
+    var declFacts =
+      (for ((formal, idx) <- fun.args.zipWithIndex) yield DFormal(fun, idx, formal)) :+
+        DReturn(fun, VariableHelper.returnVariable)
 
     instructionFacts.flatten ++ declFacts.toSet
   }
@@ -62,7 +65,7 @@ object MethodFactCollector {
     *
     * returns datalog facts and updated set of closure variables
     */
-  private def composeWithInnerFunctions(fun: Fun): (Set[ExternalVariable], Seq[(Fun, Set[DFact])]) = {
+  private[analysis] def composeWithInnerFunctions(fun: Fun): (Set[ExternalVariable], Seq[(Fun, Set[DFact])]) = {
     //start composition from child to parent
     val innerFunctions = fun.innerFunctions.map(f => (f, composeWithInnerFunctions(f)))
     val innerFacts = innerFunctions.toSeq.flatMap(_._2._2)

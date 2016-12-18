@@ -36,10 +36,10 @@ case class DAssign(fun: Fun, l: Variable, r: Variable) extends DFact(fun) {
   def terms = prefix + l :: prefix + r :: Nil
 }
 
-case class DReturn(fun: Fun, obj: Value) extends DFact(fun) {
+case class DReturn(fun: Fun, v: Variable) extends DFact(fun) {
   def predicate = "return"
 
-  def terms = prefix :: prefix + obj :: Nil
+  def terms = prefix :: prefix + v :: Nil
 }
 
 case class DMember(fun: Fun, obj: Value, field: String, fieldValue: Value) extends DFact(fun) {
@@ -49,10 +49,10 @@ case class DMember(fun: Fun, obj: Value, field: String, fieldValue: Value) exten
 
 }
 
-case class DActual(fun: Fun, targetObj: Variable, idx: Int, value: Variable) extends DFact(fun) {
+case class DActual(fun: Fun, targetVar: Variable, idx: Int, sourceVar: Variable) extends DFact(fun) {
   def predicate = "actual"
 
-  def terms = prefix + targetObj :: Integer.toString(idx + 1) :: prefix + value :: Nil
+  def terms = prefix + targetVar :: Integer.toString(idx + 1) :: prefix + sourceVar :: Nil
 }
 
 case class DInvoke(fun: Fun, target: Variable, returnVar: Variable) extends DFact(fun) {
@@ -61,10 +61,10 @@ case class DInvoke(fun: Fun, target: Variable, returnVar: Variable) extends DFac
   def terms = prefix :: prefix + target :: prefix + returnVar :: Nil
 }
 
-case class DFunctionDecl(fun: Fun, v: Variable, targetFun: Fun) extends DFact(fun) {
+case class DFunctionDecl(fun: Fun, v: Value, targetFun: Fun) extends DFact(fun) {
   def predicate = "functiondecl"
 
-  def terms = prefix :: prefix + v :: targetFun.uniqueId :: Nil
+  def terms = prefix + v :: targetFun.uniqueId :: Nil
 }
 
 case class DScope(fun: Fun, kind: String, scopeObj: Value) extends DFact(fun) {
