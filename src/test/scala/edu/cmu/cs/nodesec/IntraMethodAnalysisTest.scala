@@ -226,21 +226,15 @@ class IntraMethodAnalysisTest extends AbstractAnalysisTest {
   }
 
 
-  //  test("leftpad") {
-  //    passFile("src/test/resources/leftpad.js")
-  //  }
-
-
   def reject(prog: String): Unit = {
-    val violations = checkPolicy(prog, Policies.noCallToRequire)
+    val violations = checkPolicy(parse(prog), Policies.noCallToRequire)
     assert(violations.nonEmpty, "expected policy violation, but none found")
     println("correctly found policy violation: " + violations.mkString("\n"))
   }
 
 
-
   def pass(prog: String): Unit = {
-    val violations = checkPolicy(prog, Policies.noCallToRequire)
+    val violations = checkPolicy(parse(prog), Policies.noCallToRequire)
     assert(violations.isEmpty, "expected no policy violation, but found: " + violations.mkString("\n"))
     println("correctly found no policy violations")
   }

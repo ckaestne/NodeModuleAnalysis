@@ -17,17 +17,19 @@ object InferenceRules {
 
     //method composition (merge closures)
     rules +=
-    "stack(V1,O):-stack(V2,O),closure2local(V1,V2).\n" +
-      "stack(V1,O):-stack(V2,O),closure2local(V2,V1).\n"
+      "stack(V1,O):-stack(V2,O),closure2local(V1,V2).\n" +
+        "stack(V1,O):-stack(V2,O),closure2local(V2,V1).\n" +
+        "stack(V1,O):-stack(V2,O),closure2closure(V1,V2).\n" +
+        "stack(V1,O):-stack(V2,O),closure2closure(V2,V1).\n"
 
     //method calls
     rules +=
-    //helper: from origin OFUNID (with object representing the target TARGETOBJ and the resulting value RETVAL) to the target function TFUNID
-    "call(OFUNID,TARGETVAR,RETVAR,TFUNID) :- invoke(OFUNID,TARGETVAR,RETVAR), stack(TARGETVAR, TARGETOBJ), functiondecl(TARGETOBJ, TFUNID).\n" +
-    //link returned value of function call to return-value of the target function
-      "assign(R, O) :- call(U1, U2, R, F), return(F, O).\n" +
-    //link formal parameter to actual parameter
-      "assign(A, B) :- actual(T, Z, B), call(U1, T, X, F), formal(F, Z, A).\n"
+      //helper: from origin OFUNID (with object representing the target TARGETOBJ and the resulting value RETVAL) to the target function TFUNID
+      "call(OFUNID,TARGETVAR,RETVAR,TFUNID) :- invoke(OFUNID,TARGETVAR,RETVAR), stack(TARGETVAR, TARGETOBJ), functiondecl(TARGETOBJ, TFUNID).\n" +
+        //link returned value of function call to return-value of the target function
+        "assign(R, O) :- call(U1, U2, R, F), return(F, O).\n" +
+        //link formal parameter to actual parameter
+        "assign(A, B) :- actual(T, Z, B), call(U1, T, X, F), formal(F, Z, A).\n"
 
 
     //    rules +=

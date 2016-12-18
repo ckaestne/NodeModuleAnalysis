@@ -5,7 +5,7 @@ import edu.cmu.cs.nodesec.AbstractAnalysisTest
 /**
   * Created by ckaestne on 12/11/16.
   */
-class MethodCompositionClosureTest extends AbstractAnalysisTest {
+class ClosureMappingTest extends AbstractAnalysisTest {
 
   test("single function") {
     val fun = cfg("var x=3; foo=4;")

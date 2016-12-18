@@ -513,6 +513,15 @@ case class Fun(body: CFG,
                innerFunctions: Set[Fun]) {
   lazy val uniqueId = Integer.toHexString(hashCode()) + "#"
   lazy val localOrArgs = args ++ localVariables
+
+  //direct and indirect inner functions
   lazy val allInnerFunctions: Set[Fun] = innerFunctions ++ innerFunctions.flatMap(_.allInnerFunctions)
+  //closure variables including those from inner functions that are not matched by local variables
+  lazy val allClosureVariables: Set[ExternalVariable] = {
+    val innerClosureVariables = innerFunctions.flatMap(_.allClosureVariables)
+    val closureToLocal = innerClosureVariables.map(cl => cl -> localOrArgs.find(_.name == cl.name)).filter(_._2.nonEmpty).toMap
+    val propagatedClosure = innerClosureVariables -- closureToLocal.keys
+    closureVariables ++ propagatedClosure
+  }
 
 }

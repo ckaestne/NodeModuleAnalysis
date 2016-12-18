@@ -5,7 +5,7 @@ import edu.cmu.cs.nodesec.analysis.Policies._
 /**
   * Created by ckaestne on 11/24/16.
   */
-class MethodCompositionPolicyTest extends AbstractAnalysisTest {
+class PolicyTest extends AbstractAnalysisTest {
 
   test("return and closure") {
     reject(
@@ -165,20 +165,36 @@ class MethodCompositionPolicyTest extends AbstractAnalysisTest {
 //  ///////////////////////////////////////////////
 //  // other policies
 //
-//  test("write to closure") {
-//    pass("var x; x=1;", noWriteToClosure)
-//    reject("x=1;", noWriteToClosure)
-//    reject("x.y.z=1;", noWriteToClosure)
-//    reject("var x=1; function foo() { x=2; }", noWriteToClosure)
-//    reject("function foo() { x=2; }", noWriteToClosure)
-//  }
-//
-//  test("read from global") {
-//    pass("var x=1; return x;", noReadFromGlobal)
-//    reject("return x;", noReadFromGlobal)
-//    reject("function foo(){return x;}", noReadFromGlobal)
-//    reject("var x = 1; function foo(){return x;}", noReadFromGlobal) //analysis is fairly imprecise
-//  }
+  test("write to closure") {
+    pass("var x; x=1;", noWriteToClosure)
+    reject("x=1;", noWriteToClosure)
+    pass("var x=1; function foo() { x=2; }", noWriteToClosure)
+    reject("function foo() { x=2; }", noWriteToClosure)
+  }
+
+  test("store to object from closure") {
+    pass("var x={}; x.x=1;", noStoreToClosure)
+    reject("x.y=1;", noStoreToClosure)
+    reject("function f(){ x.y=1; }", noStoreToClosure)
+    reject("var a=x; a.y=1;", noStoreToClosure)
+    reject("x.y.z=1;", noStoreToClosure)
+    reject("var a= x.y; a.z=1;", noStoreToClosure)
+    pass("var a={}; a.b=x.y;foo(a.b.z);", noStoreToClosure)
+    reject("var a={}; a.b=x.y; a.b.z=1;", noStoreToClosure)
+    reject("var a={}; a.b.c=x.y; a.b.c.z=1;", noStoreToClosure)
+    //module is a local parameter, not a global object
+    pass("module.foo=3;", noStoreToClosure)
+  }
+
+  test("read from global") {
+    pass("var x=1; return x;", noReadFromClosure)
+    reject("return x;", noReadFromClosure)
+    reject("return x.f;", noReadFromClosure)
+    reject("var y; y.x=x;", noReadFromClosure)
+    reject("function f(){return x;}", noReadFromClosure)
+    reject("function foo(){return x;}", noReadFromClosure)
+    pass("var x = 1; function foo(){return x;}", noReadFromClosure)
+  }
 //
 //  test("no prototype") {
 //    pass("(function(){})(); var x = {};", noPrototype)
@@ -193,11 +209,11 @@ class MethodCompositionPolicyTest extends AbstractAnalysisTest {
 //    reject("x=eval; x();", noForbiddenGlobalObjects)
 //  }
 //
-//  test("unresolved function calls") {
-//    pass("function foo(){} foo(); var x=foo; x();", noAlwaysUnresolvedFunctionCalls)
-//    reject("foo();", noAlwaysUnresolvedFunctionCalls)
-//    reject("require();", noAlwaysUnresolvedFunctionCalls)
-//    pass("var x; if (3) x=function(){}; x();", noAlwaysUnresolvedFunctionCalls) //cannot check absence of unresolved call in some cases
-//  }
+  test("unresolved function calls") {
+    pass("function foo(){} foo(); var x=foo; x();", noAlwaysUnresolvedFunctionCalls)
+    reject("foo();", noAlwaysUnresolvedFunctionCalls)
+    reject("require();", noAlwaysUnresolvedFunctionCalls)
+    pass("var x; if (3) x=function(){}; x();", noAlwaysUnresolvedFunctionCalls) //cannot check absence of unresolved call in some cases
+  }
 
 }

@@ -2,7 +2,7 @@ package edu.cmu.cs.nodesec
 
 import edu.cmu.cs.nodesec.analysis._
 import edu.cmu.cs.nodesec.datalog.Datalog
-import edu.cmu.cs.nodesec.parser.JSParser
+import edu.cmu.cs.nodesec.parser.{FunctionBody, JSParser}
 import org.scalatest.FunSuite
 
 
@@ -12,38 +12,37 @@ import org.scalatest.FunSuite
 abstract class AbstractAnalysisTest extends FunSuite {
 
 
-
-
   def reject(prog: String, policies: Policy*): Unit = {
     assert(policies.nonEmpty, "no policies provided")
-    val policyViolations: Seq[PolicyViolation] = checkPolicy(prog, policies.reduce(_ + _))
+    val policyViolations: Seq[PolicyViolation] = checkPolicy(parse(prog), policies.reduce(_ + _))
 
-    println(policyViolations.map(_.render).mkString("\n"))
     assert(policyViolations.nonEmpty, "policy violation expected, but not found")
+    println(policyViolations.map(_.render).mkString("\n"))
   }
-
 
 
   def pass(prog: String, policies: Policy*): Unit = {
     assert(policies.nonEmpty, "no policies provided")
-    val policyViolations: Seq[PolicyViolation] = checkPolicy(prog, policies.reduce(_ + _))
+    val policyViolations: Seq[PolicyViolation] = checkPolicy(parse(prog), policies.reduce(_ + _))
+
     assert(policyViolations.isEmpty, "policy violation found:\n" + policyViolations.map(_.render).mkString("\n"))
   }
 
 
-//  def passFile(file: String, policies: Policy*): Unit = {
-//    assert(policies.nonEmpty, "no policies provided")
-//    val vm = parseFile(file)
-//    val policyViolations = MethodCompositionAnalysis.analyzeScript(vm, policies.reduce(_ + _), true)
-//    assert(policyViolations.isEmpty, "policy violation found:\n" + policyViolations.map(_.render).mkString("\n"))
-//  }
-//
-//  def rejectFile(file: String, policies: Policy*): Unit = {
-//    assert(policies.nonEmpty, "no policies provided")
-//    val vm = parseFile(file)
-//    val policyViolations = MethodCompositionAnalysis.analyzeScript(vm, policies.reduce(_ + _), true)
-//    assert(policyViolations.nonEmpty, "policy violation expected, but not found")
-//  }
+  def passFile(file: String, policies: Policy*): Unit = {
+    assert(policies.nonEmpty, "no policies provided")
+    val policyViolations: Seq[PolicyViolation] = checkPolicy(parseFile(file), policies.reduce(_ + _))
+
+    assert(policyViolations.isEmpty, "policy violation found:\n" + policyViolations.map(_.render).mkString("\n"))
+    println(policyViolations.map(_.render).mkString("\n"))
+  }
+
+  def rejectFile(file: String, policies: Policy*): Unit = {
+    assert(policies.nonEmpty, "no policies provided")
+    val policyViolations: Seq[PolicyViolation] = checkPolicy(parseFile(file), policies.reduce(_ + _))
+
+    assert(policyViolations.nonEmpty, "policy violation expected, but not found")
+  }
 
 
   def parse(prog: String) = {
@@ -70,9 +69,8 @@ abstract class AbstractAnalysisTest extends FunSuite {
     ).mkString("\n")
 
 
-  def checkPolicy(prog: String, policy: Policy): Seq[PolicyViolation] = {
-    val vm = parse(prog)
-    val fun = AnalysisHelper.cfgScript(vm)
+  def checkPolicy(ast: FunctionBody, policy: Policy): Seq[PolicyViolation] = {
+    val fun = AnalysisHelper.cfgScript(ast)
     fun.body.nodes.toList.flatMap(_.s.reverse).foreach(println)
     val facts = MethodFactCollector.collectFacts(fun)
 
