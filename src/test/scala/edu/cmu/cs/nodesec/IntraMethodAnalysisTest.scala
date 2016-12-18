@@ -1,8 +1,11 @@
 package edu.cmu.cs.nodesec
 
 import edu.cmu.cs.nodesec.analysis._
+import edu.cmu.cs.nodesec.datalog.{DFact, Datalog}
 import edu.cmu.cs.nodesec.parser.JSParser
 import org.scalatest.FunSuite
+
+import scala.util.parsing.input.{NoPosition, Position}
 
 
 /**
@@ -23,6 +26,10 @@ class IntraMethodAnalysisTest extends FunSuite {
     pass("var x = require; var y = x;")
   }
 
+  test("assignment") {
+    reject("var x = require; \n x();")
+  }
+
   test("local call") {
     pass("var x = function() {};" +
       "x();")
@@ -36,6 +43,26 @@ class IntraMethodAnalysisTest extends FunSuite {
     //not a concern for us
     pass("var x;" +
       "x();")
+  }
+
+  test("load / store") {
+    reject("var x;\n" +
+      "x.y=require;\n" +
+      "x.y();")
+    //store to undefined has no effect
+    pass("var x;\n" +
+      "x.y.z=require;\n" +
+      "x.y.z();")
+    pass("var x;\n" +
+      "x.y.z.a=require;\n" +
+      "x.y.z.a();")
+    reject("var x={};\n" +
+      "x.y={};" +
+      "x.y.z=require;\n" +
+      "x.y.z();")
+    reject("var x={}; x.y={}; x.y.z={};\n" +
+      "x.y.z.a=require;\n" +
+      "x.y.z.a();")
   }
 
 
@@ -88,6 +115,28 @@ class IntraMethodAnalysisTest extends FunSuite {
     )
   }
 
+  test("flow insensitive") {
+    //we reject a number of correct programs
+    reject(
+      """
+        |var x, y;
+        |x = require;
+        |x = y;
+        |x();
+      """.stripMargin
+    )
+    reject(
+      """
+        |var x, foo;
+        |y = require;
+        |if (x)
+        | y = foo;
+        |else y = bar;
+        |y();
+      """.stripMargin
+    )
+  }
+
   test("loop") {
     reject(
       """
@@ -128,6 +177,7 @@ class IntraMethodAnalysisTest extends FunSuite {
     reject(
       """
         |var x={}, y, z;
+        |x.x={};x.x.x={};x.x.x.x={};
         |x.x.x.x.x = require;
         |while (3) {
         | x=x.x;
@@ -178,50 +228,71 @@ class IntraMethodAnalysisTest extends FunSuite {
         |x.foo();
       """.stripMargin
     )
-    reject(
-      """
-        |var x = {};
-        |x.a.b.c.d.e=require;
-        |x.a.b.c.d.e();
-      """.stripMargin
-    )
   }
 
 
-  test("leftpad") {
-    passFile("src/test/resources/leftpad.js")
-  }
+  //  test("leftpad") {
+  //    passFile("src/test/resources/leftpad.js")
+  //  }
 
 
   def reject(prog: String): Unit = {
-    val vm = parse(prog)
-    try {
-      checkPolicy(new IntraMethodAnalysis().analyzeScript(vm))
-      fail("expected to reject program, but passed")
-    } catch {
-      case e: Analysis3Exception =>
-        println("rejected: " + e.getMessage)
-    }
+    val violations = findNoRequireCallViolations(prog)
+    assert(violations.nonEmpty, "expected policy violation, but none found")
+    println("correctly found policy violation: " + violations.mkString("\n"))
   }
+
+  private def findNoRequireCallViolations(prog: String) = {
+    val vm = parse(prog)
+    val fun = AnalysisHelper.cfgScript(vm)
+    fun.body.nodes.toList.flatMap(_.s.reverse).foreach(println)
+    val facts = MethodFactCollector.collectFacts(fun)
+
+    for ((f, fact) <- facts) {
+      println("%% function " + f.uniqueId)
+      fact.map(_.toString).toList.sorted.foreach(println)
+    }
+
+    checkNoRequireCall(facts.map(_._2).flatten, fun)
+  }
+
+  private def checkNoRequireCall(facts: Iterable[DFact], fun: Fun): Seq[PolicyViolation] = {
+    val d = new Datalog()
+    InferenceRules.loadRules(d)
+    d.load(facts)
+
+    import Datalog.stripQuotes
+    val rules =
+      "%% query\n" +
+        "forbiddenCallTarget(\"require-obj\").\n" +
+        "stack(\"" + fun.uniqueId + "lv-require\", \"require-obj\").\n" +
+        "callToForbiddenTarget(RV) :- invoke(F, TV, RV), stack(TV, O), forbiddenCallTarget(O)."
+    println(d.loadRules(rules))
+    val result = stripQuotes(d.query("callToForbiddenTarget", "X"))
+
+    result.map(
+      r => PolicyViolation("Potential call to 'require' found", getFunctionCallPositionByRetObj(r("X"), fun))
+    )
+
+
+  }
+
+  private def getFunctionCallPositionByRetObj(retObjString: String, fun: Fun): Position = {
+    val f = (fun.allInnerFunctions + fun).find(retObjString startsWith _.uniqueId)
+    if (f.isDefined)
+      f.get.body.nodes.flatMap(_.s).
+        collect({ case c@Call(r, _, _, _) if fun.uniqueId + r == retObjString => c }).
+        headOption.map(_.pos).getOrElse(NoPosition)
+    else NoPosition
+  }
+
 
   def pass(prog: String): Unit = {
-    val vm = parse(prog)
-    checkPolicy(new IntraMethodAnalysis().analyzeScript(vm))
+    val violations = findNoRequireCallViolations(prog)
+    assert(violations.isEmpty, "expected no policy violation, but found: " + violations.mkString("\n"))
+    println("correctly found no policy violations")
   }
 
-
-  def passFile(file: String): Unit = {
-    val vm = parseFile(file)
-    checkPolicy(new IntraMethodAnalysis().analyzeScript(vm))
-  }
-
-  def checkPolicy(env: MethodSummary): Unit = {
-    for ((call, paramset) <- env.calls;
-         params <- paramset;
-         target <- params.target)
-      if (target == Param("require"))
-        throw new Analysis3Exception("call to require function found -- " + call)
-  }
 
   def parse(prog: String) = {
     val parsed = p.parseAll(p.Program, prog)
@@ -254,23 +325,5 @@ class IntraMethodAnalysisTest extends FunSuite {
       l => if (l.startsWith("#!")) "" else l
     ).mkString("\n")
 
-//  def printProg(s: Statement, indent: Int = 0): Unit = {
-//    val in = "  " * indent
-//    s match {
-//      case Sequence(inner) => inner.reverse.map(printProg(_, indent))
-//      case FunDecl(v, args, body) =>
-//        println(in + s"FunDecl $v, $args:")
-//        printProg(body, indent + 1)
-//      case ConditionalStatement(a, b) =>
-//        println(in + s"if:")
-//        printProg(a, indent + 1)
-//        println(in + "else:")
-//        printProg(b, indent + 1)
-//      case LoopStatement(a) =>
-//        println(in + s"loop:")
-//        printProg(a, indent + 1)
-//      case _ => println(in + s.toString)
-//    }
-//  }
 
 }

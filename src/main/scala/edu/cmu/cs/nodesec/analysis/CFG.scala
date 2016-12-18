@@ -150,7 +150,7 @@ object CFGBuilder {
     case Assignment(l, r) => Set(l, r)
     case PrimAssignment(l) => Set(l)
     case ConstAssignment(l, _) => Set(l)
-    case OpInstruction(a, b, c) => Set(a, b, c)
+    case OpInstruction(a, b, _, c) => Set(a, b, c)
     case Constructor(a, b, cs) => cs.toSet + a + b
     case Call(a, b, c, ds) => ds.toSet + a + b + c
     case Load(a, b, _) => Set(a, b)
@@ -321,11 +321,11 @@ object CFGBuilder {
     import VariableHelper._
     def _buildExpressionStmt(ast: Expr): (CFGNode, Variable) = buildExpressionStmt(ast, env)
     val (s, v): (CFGNode, Variable) = expr match {
-      case BinExpr(a, _, b) =>
+      case BinExpr(a, op, b) =>
         val (s1, v1) = _buildExpressionStmt(a)
         val (s2, v2) = _buildExpressionStmt(b)
         val r = freshVar
-        (OpInstruction(r, v1, v2) ++ s1 ++ s2, r)
+        (OpInstruction(r, v1, op, v2) ++ s1 ++ s2, r)
 
       case AssignExpr(FieldAcc(targ, field), _, b) =>
         val (s1, v1) = _buildExpressionStmt(targ)
@@ -345,7 +345,7 @@ object CFGBuilder {
         val (se, ve) = _buildExpressionStmt(e)
         val r = freshVar
         //TODO technically this could be modeled as control flow branch
-        (OpInstruction(r, ve, vt) ++ se ++ st ++ si, r)
+        (OpInstruction(r, ve, "ite", vt) ++ se ++ st ++ si, r)
 
       case PostExpr(e, _) => _buildExpressionStmt(e)
       case UnaryExpr(a, e) =>
@@ -463,6 +463,7 @@ trait Instruction extends Positional {
   * a block contains a list of instructions; the
   * first instruction is at the tail of the list and later
   * instructions are added to the head
+  *
   * @param s
   */
 case class Block(s: List[Instruction]) {
@@ -488,7 +489,7 @@ case class PrimAssignment(l: Variable) extends Instruction
 
 case class ConstAssignment(l: Variable, v: String) extends Instruction
 
-case class OpInstruction(result: Variable, v1: Variable, v2: Variable) extends Instruction
+case class OpInstruction(result: Variable, v1: Variable, op: String, v2: Variable) extends Instruction
 
 case class Constructor(result: Variable, name: Variable, params: List[Variable]) extends Instruction
 
@@ -512,5 +513,6 @@ case class Fun(body: CFG,
                innerFunctions: Set[Fun]) {
   lazy val uniqueId = Integer.toHexString(hashCode()) + "#"
   lazy val localOrArgs = args ++ localVariables
+  lazy val allInnerFunctions: Set[Fun] = innerFunctions ++ innerFunctions.flatMap(_.allInnerFunctions)
 
 }

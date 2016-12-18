@@ -42,7 +42,23 @@ object AnalysisHelper {
   def cfgScript(script: FunctionBody): Fun =
     CFGBuilder.toFun(wrapScript(script))
 
-  def summarizeFunction(fun: Fun): MethodSummary =
-    new IntraMethodAnalysis().analyze(fun)
+  //  def summarizeFunction(fun: Fun): MethodSummary =
+  //    new IntraMethodAnalysis().analyze(fun)
 
+}
+
+object NameHelper {
+  var objectCounter = 0
+
+  def genObjectName = {
+    objectCounter += 1
+    "obj" + objectCounter
+  }
+
+  var functionCounter = 0
+
+  def genFunctionName = {
+    functionCounter += 1
+    "fun" + functionCounter
+  }
 }
