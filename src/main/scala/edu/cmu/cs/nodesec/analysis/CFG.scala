@@ -511,5 +511,6 @@ case class Fun(body: CFG,
                args: List[LocalVariable], localVariables: Set[LocalVariable], closureVariables: Set[ExternalVariable],
                innerFunctions: Set[Fun]) {
   lazy val uniqueId = Integer.toHexString(hashCode()) + "#"
+  lazy val localOrArgs = args ++ localVariables
 
 }

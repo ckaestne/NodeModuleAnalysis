@@ -19,10 +19,6 @@ import edu.cmu.cs.nodesec.parser.FunctionBody
 object MethodCompositionAnalysis {
 
 
-
-
-
-
   import AnalysisHelper._
   import VariableHelper._
 
@@ -34,6 +30,36 @@ object MethodCompositionAnalysis {
 
   def getAllInnerFun(fun: Fun): Set[Fun] =
     fun.innerFunctions.map(getAllInnerFun).flatten + fun
+
+
+  /**
+    * hierarchical composition,
+    *
+    * returns datalog facts and updated set of closure variables
+    */
+  def composeWithInnerFunctions(fun: Fun): (Set[ExternalVariable], Seq[DRelation]) = {
+    //start composition from child to parent
+    val innerFunctions = fun.innerFunctions.map(f => (f, composeWithInnerFunctions(f)))
+    val innerFacts = innerFunctions.toSeq.flatMap(_._2._2)
+
+    val summary = new IntraMethodAnalysis().analyze(fun)
+    var facts = summaryToDatalog(fun, summary)
+
+    //connect closure variables
+    val innerClosureVariables = innerFunctions.flatMap(_._2._1)
+    val closureToLocal = innerClosureVariables.map(cl => cl -> fun.localOrArgs.find(_.name == cl.name)).filter(_._2.nonEmpty).toMap
+    val propagatedClosure = innerClosureVariables -- closureToLocal.keys
+    val outerClosure = fun.closureVariables ++ propagatedClosure
+    for ((innerFun, (closureVars, _)) <- innerFunctions; closureVar <- closureVars) {
+      if (closureToLocal contains closureVar)
+        facts :+= DClosureToLocal(fun, closureToLocal(closureVar).get, innerFun, closureVar)
+      if (propagatedClosure contains closureVar)
+        facts :+= DClosureToClosure(fun, innerFun, closureVar)
+    }
+
+    (outerClosure, innerFacts ++ facts)
+  }
+
 
   def analyze(fun: Fun, policy: Policy, mainFun: Option[Fun] = None): Seq[PolicyViolation] = {
     var functions = getAllInnerFun(fun)
@@ -111,7 +137,7 @@ object MethodCompositionAnalysis {
     datalog
   }
 
-  def summaryToDatalog(fun: Fun, env: MethodSummary): List[DRelation] = {
+  def summaryToDatalog(fun: Fun, env: MethodSummary): Seq[DRelation] = {
     var result: List[DRelation] = Nil
 
     for ((arg, idx) <- fun.args.zipWithIndex;

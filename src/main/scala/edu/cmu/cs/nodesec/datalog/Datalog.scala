@@ -67,6 +67,18 @@ case class DScope(fun: Fun, kind: String, scopeObj: Value) extends DRelation(fun
   def terms = prefix :: kind :: prefix + scopeObj :: Nil
 }
 
+case class DClosureToLocal(fun: Fun, localVar: LocalVariable, innerFun: Fun, closureVar: ExternalVariable) extends DRelation(fun) {
+  def predicate = "closure2local"
+
+  def terms = prefix + localVar :: innerFun.uniqueId + closureVar :: Nil
+}
+
+case class DClosureToClosure(fun: Fun, innerFun: Fun, closureVar: ExternalVariable) extends DRelation(fun) {
+  def predicate = "closure2closure"
+
+  def terms = prefix + closureVar :: innerFun.uniqueId + closureVar :: Nil
+}
+
 
 case class DStore(fun: Fun, obj: Value, field: String, fieldValue: Value) extends DRelation(fun) {
   def predicate = "store"
