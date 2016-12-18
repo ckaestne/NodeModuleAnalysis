@@ -1,8 +1,10 @@
 package edu.cmu.cs.nodesec
 
+import java.io.File
+
 import edu.cmu.cs.nodesec.analysis._
 import edu.cmu.cs.nodesec.datalog.Datalog
-import edu.cmu.cs.nodesec.parser.{FunctionBody, JSParser}
+import edu.cmu.cs.nodesec.parser.{FunctionBody, JSASTParser, JSParser}
 import org.scalatest.FunSuite
 
 
@@ -42,6 +44,7 @@ abstract class AbstractAnalysisTest extends FunSuite {
     val policyViolations: Seq[PolicyViolation] = checkPolicy(parseFile(file), policies.reduce(_ + _))
 
     assert(policyViolations.nonEmpty, "policy violation expected, but not found")
+    println(policyViolations.map(_.render).mkString("\n"))
   }
 
 
@@ -52,9 +55,13 @@ abstract class AbstractAnalysisTest extends FunSuite {
   }
 
   def parseFile(file: String) = {
-    val parsed = p.parseAll(p.Program, getSource(file))
-    if (!parsed.successful) println(parsed)
-    parsed.get
+    import scala.sys.process._
+    val tmp = File.createTempFile("pjs","js")
+    tmp.deleteOnExit()
+
+    val json =
+      Process(s"node esprint/parse2.js $file ${tmp.getAbsolutePath}").!
+    new JSASTParser().parse(tmp)
   }
 
 

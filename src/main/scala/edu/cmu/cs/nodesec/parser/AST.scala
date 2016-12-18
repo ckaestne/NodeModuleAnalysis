@@ -147,10 +147,6 @@ case class EmptyStmt() extends Stmt {
 }
 
 
-case class NotImplStmt(inner: Any) extends Stmt {
-  override def astCopy(): NotImplStmt = NotImplStmt()
-}
-
 case class VarDef(name: Id, init: Option[Expr])
 
 

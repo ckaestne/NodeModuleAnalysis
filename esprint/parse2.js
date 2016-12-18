@@ -1,5 +1,4 @@
 var p=require("esprima")
-var g=require("escodegen")
 
 var fin = process.argv[2]
 var fout = process.argv[3]

@@ -21,12 +21,12 @@ class JSParser extends RegexParsers {
     ";" ^^^ EmptyStmt() |
       "if" ~> Condition ~ Statement ~ opt("else" ~> Statement) ^^ ifStmt |
       "while" ~> Condition ~ Statement ^^ whileStmt |
-      "for" ~ "(" ~ ";" ~ Expression.? ~ ";" ~ Expression.? ~ ")" ~ Statement ^^ NotImplStmt |
-      "for" ~ "(" ~ VariablesOrExpression ~ ";" ~ Expression.? ~ ";" ~ Expression.? ~ ")" ~ Statement ^^ NotImplStmt |
-      "for" ~ "(" ~ VariablesOrExpression ~ "in" ~ Expression ~ ")" ~ Statement ^^ NotImplStmt |
-      "break" ~ ";" ^^ NotImplStmt |
-      "continue" ~ ";" ^^ NotImplStmt |
-      "with" ~ "(" ~ Expression ~ ")" ~ Statement ^^ NotImplStmt |
+//      "for" ~ "(" ~ ";" ~ Expression.? ~ ";" ~ Expression.? ~ ")" ~ Statement ^^ ??? |
+//      "for" ~ "(" ~ VariablesOrExpression ~ ";" ~ Expression.? ~ ";" ~ Expression.? ~ ")" ~ Statement ^^ ??? |
+//      "for" ~ "(" ~ VariablesOrExpression ~ "in" ~ Expression ~ ")" ~ Statement ^^ ??? |
+//      "break" ~ ";" ^^ ??? |
+//      "continue" ~ ";" ^^ ??? |
+//      "with" ~ "(" ~ Expression ~ ")" ~ Statement ^^ ??? |
       "return" ~> Expression.? <~ ";" ^^ ReturnStmt |
       CompoundStatement |
       VariablesOrExpression <~ ";")

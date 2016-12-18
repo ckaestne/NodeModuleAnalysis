@@ -13,14 +13,14 @@ class FileAnalysisTest extends AbstractAnalysisTest {
   }
   test("parse leftpad") {
     //TODO handle toString call
-    passFile("src/test/resources/leftpad.js", /*allPolicies) */noCallToRequire + noWriteToClosure + noPrototype + noReadFromClosure)
+    passFile("src/test/resources/leftpad.js", /*allPolicies) */ noCallToRequire + noWriteToClosure + noPrototype + noReadFromClosure)
   }
-//    test("parse wordwrap") {
-//      passFile("src/test/resources/wordwrap.js",allPolicies)
-//    }
-//    ignore("parse gulp") {
-//      passFile("src/test/resources/gulp.js", allPolicies)
-//    }
+  test("parse wordwrap") {
+    passFile("src/test/resources/wordwrap.js", noCallToRequire + noWriteToClosure + noPrototype + noReadFromClosure)
+  }
+  test("parse gulp") {
+    rejectFile("src/test/resources/gulp.js", noCallToRequire)
+  }
 
   test("parse demo") {
     rejectFile("src/test/resources/demo.js", allPolicies)

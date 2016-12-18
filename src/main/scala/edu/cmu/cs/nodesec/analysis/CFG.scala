@@ -293,7 +293,6 @@ object CFGBuilder {
         }
         _simpleStmt(vars.filter(_.init.isDefined).map(x => toDefStmt(x.name.a, x.init.get)).fold(Block.empty())(_ ++ _))
       case EmptyStmt() => _simpleStmt(Block.empty())
-      case NotImplStmt(_) => ???
 
       case f@FunDeclaration(name, param, body) =>
         assert(env.localVariableNames.contains(name.a))
