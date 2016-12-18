@@ -71,7 +71,7 @@ object Policies {
       //because we may read from things that are not known objects on the
       //stack
       val rules = f.allClosureVariables.map("closurevar(\"" + f.uniqueId + _ + "\").\n").mkString +
-//        "closurevar(V):-closurevar(X),closure2closure(X,V).\n" +
+        //        "closurevar(V):-closurevar(X),closure2closure(X,V).\n" +
         "varFromClosure(V):-closurevar(V).\n" +
         "varFromClosure(X):-assign(X,Y),varFromClosure(Y).\n" +
         "varFromClosure(X):-varFromClosure(Y),load(X,Y,F).\n" +
@@ -91,14 +91,17 @@ object Policies {
     }
   }
 
+  private val noReadFromClosureRules = "closurevar(V):-closurevar(X),closure2closure(X,V).\n" +
+    "readFromClosure(V):-assign(X,V), closurevar(V).\n" +
+    "readFromClosure(V):-store(X,F,V), closurevar(V).\n" +
+    "readFromClosure(V):-invoke(U1,V,U2), closurevar(V).\n" +
+    "readFromClosure(V):-actual(U1,U2,V), closurevar(V).\n" +
+    "readFromClosure(V):-load(X,V,F), closurevar(V).\n"
 
   val noReadFromClosure = new Policy {
     override def apply(datalog: Datalog, f: Fun): Seq[PolicyViolation] = {
       val rules = f.allClosureVariables.map("closurevar(\"" + f.uniqueId + _ + "\").\n").mkString +
-        "closurevar(V):-closurevar(X),closure2closure(X,V).\n" +
-        "readFromClosure(V):-assign(X,V), closurevar(V).\n" +
-        "readFromClosure(V):-store(X,F,V), closurevar(V).\n" +
-        "readFromClosure(V):-load(X,V,F), closurevar(V).\n"
+        noReadFromClosureRules
       println(datalog.loadRules(rules))
       val result = stripQuotes(datalog.query("readFromClosure", "F"))
 
@@ -107,49 +110,67 @@ object Policies {
       )
     }
   }
-  //
-  //  val noPrototype = new Policy {
-  //    override def apply(datalog: Datalog, mainFun: Fun, methodSummaries: Set[(Fun, MethodSummary)]): Seq[PolicyViolation] = {
-  //      datalog.loadRules("accessToPrototype(X,Y) :- member(X, \"prototype\", Y).\n" +
-  //        "accessToPrototype(X,Y) :- member(X, \"__proto__\", Y)."
-  //      )
-  //      val result = stripQuotes(datalog.query("accessToPrototype", "X", "Y"))
-  //
-  //      result.map(
-  //        r => PolicyViolation(s"Access to prototype found (${r("X")}.prototype)", NoPosition)
-  //      )
-  //    }
-  //  }
-  //
-  //  val noForbiddenGlobalObjects = new Policy {
-  //    override def apply(datalog: Datalog, mainFun: Fun, methodSummaries: Set[(Fun, MethodSummary)]): Seq[PolicyViolation] = {
-  //      val globalObj = methodSummaries.find(_._1 == mainFun).get._2.closureObj
-  //      datalog.loadRules("readFromGlobal(G,F) :- load(G, F, U2).\n" +
-  //        "readFromGlobal(G,F) :- pt(X, G), load(X, F, U2).\n" +
-  //        "forbiddenGlobal(\"eval\"). \n forbiddenGlobal(\"arguments\").\n" +
-  //        "accessToForbiddenGlobals(G, F) :- readFromGlobal(G, F), forbiddenGlobal(F)."
-  //      )
-  //      val result = stripQuotes(datalog.query("accessToForbiddenGlobals", "\"" + mainFun.uniqueId + globalObj + "\"", "F"))
-  //
-  //      result.map(
-  //        r => PolicyViolation(s"Access to forbidden global object `${r("F")}` found", NoPosition)
-  //      )
-  //    }
-  //  }
-  //
-    val noAlwaysUnresolvedFunctionCalls = new Policy {
-      //we cannot ask whether it is always resolved, only whether it is at least sometimes resolved
-      //debugging rather than security check
-      override def apply(datalog: Datalog, fun: Fun): Seq[PolicyViolation] = {
-        datalog.loadRules("hasCall(X):-call(U1, U2, X, U3).\n" +
-          "alwaysUnresolvedFunctionCalls(F, X) :- invoke(F, U3, X), not hasCall(X).")
-        val result = stripQuotes(datalog.query("alwaysUnresolvedFunctionCalls", "F", "X"))
 
-        result.map(
-          r => PolicyViolation(s"Call to function never resolved (${r("X")})", getFunctionCallPositionByRetObj(r("X"), fun))
-        )
-      }
+  val noPrototype = new Policy {
+    override def apply(datalog: Datalog, fun: Fun): Seq[PolicyViolation] = {
+      datalog.loadRules(
+        "accessToPrototype(X,Y) :- store(X, \"prototype\", Y).\n" +
+          "accessToPrototype(X,Y) :- store(X, \"__proto__\", Y).\n" +
+          "accessToPrototype(X,Y) :- load(X, Y, \"prototype\").\n" +
+          "accessToPrototype(X,Y) :- load(X, Y, \"__proto__\").\n"
+      )
+      val result = stripQuotes(datalog.query("accessToPrototype", "X", "Y"))
+
+      result.map(
+        r => PolicyViolation(s"Access to prototype found (${r("X")}.prototype)", NoPosition)
+      )
     }
+  }
+
+  val noForbiddenGlobalObjects = new Policy {
+    //same strategy as noReadFromClosure
+    override def apply(datalog: Datalog, f: Fun): Seq[PolicyViolation] = {
+      val forbiddenClosureVariables = Set("eval", "arguments")
+      val rules =
+        forbiddenClosureVariables.map("forbiddenGlobal(\"" + f.uniqueId + new ExternalVariable(_) + "\").\n").mkString +
+          f.allClosureVariables.map("closurevar(\"" + f.uniqueId + _ + "\").\n").mkString +
+          noReadFromClosureRules +
+          "accessToForbiddenGlobals(G):-readFromClosure(G),forbiddenGlobal(G)."
+      println(datalog.loadRules(rules))
+      val result = stripQuotes(datalog.query("accessToForbiddenGlobals", "F"))
+
+      result.map(
+        r => PolicyViolation(s"Access to forbidden global object `${r("F")}` found", NoPosition)
+      )
+    }
+
+    //      override def apply(datalog: Datalog, mainFun: Fun): Seq[PolicyViolation] = {
+    //        datalog.loadRules("readFromGlobal(G,F) :- load(G, F, U2).\n" +
+    //          "readFromGlobal(G,F) :- pt(X, G), load(X, F, U2).\n" +
+    //          "forbiddenGlobal(\"eval\"). \n forbiddenGlobal(\"arguments\").\n" +
+    //          "accessToForbiddenGlobals(G, F) :- readFromGlobal(G, F), forbiddenGlobal(F)."
+    //        )
+    //        val result = stripQuotes(datalog.query("accessToForbiddenGlobals", "\"" + mainFun.uniqueId + globalObj + "\"", "F"))
+    //
+    //        result.map(
+    //          r => PolicyViolation(s"Access to forbidden global object `${r("F")}` found", NoPosition)
+    //        )
+    //      }
+  }
+
+  val noAlwaysUnresolvedFunctionCalls = new Policy {
+    //we cannot ask whether it is always resolved, only whether it is at least sometimes resolved
+    //debugging rather than security check
+    override def apply(datalog: Datalog, fun: Fun): Seq[PolicyViolation] = {
+      datalog.loadRules("hasCall(X):-call(U1, U2, X, U3).\n" +
+        "alwaysUnresolvedFunctionCalls(F, X) :- invoke(F, U3, X), not hasCall(X).")
+      val result = stripQuotes(datalog.query("alwaysUnresolvedFunctionCalls", "F", "X"))
+
+      result.map(
+        r => PolicyViolation(s"Call to function never resolved (${r("X")})", getFunctionCallPositionByRetObj(r("X"), fun))
+      )
+    }
+  }
 
   def allPolicies =
   //    noAlwaysUnresolvedFunctionCalls +

@@ -195,20 +195,20 @@ class PolicyTest extends AbstractAnalysisTest {
     reject("function foo(){return x;}", noReadFromClosure)
     pass("var x = 1; function foo(){return x;}", noReadFromClosure)
   }
-//
-//  test("no prototype") {
-//    pass("(function(){})(); var x = {};", noPrototype)
-//    reject("var x={}; x.prototype.foo=3;", noPrototype)
-//    reject("function foo(){}; var x=new foo(); x.prototype.foo=3;", noPrototype)
-//  }
-//
-//  test("forbidden global objects") {
-//    pass("whatever(); require();", noForbiddenGlobalObjects)
-//    reject("eval(\"foo\");", noForbiddenGlobalObjects)
-//    reject("arguments(1)();", noForbiddenGlobalObjects)
-//    reject("x=eval; x();", noForbiddenGlobalObjects)
-//  }
-//
+
+  test("no prototype") {
+    pass("(function(){})(); var x = {};", noPrototype)
+    reject("var x={}; x.prototype.foo=3;", noPrototype)
+    reject("function foo(){}; var x=new foo(); x.prototype.foo=3;", noPrototype)
+  }
+
+  test("forbidden global objects") {
+    pass("whatever(); require();", noForbiddenGlobalObjects)
+    reject("eval(\"foo\");", noForbiddenGlobalObjects)
+    reject("arguments(1)();", noForbiddenGlobalObjects)
+    reject("x=eval; x();", noForbiddenGlobalObjects)
+  }
+
   test("unresolved function calls") {
     pass("function foo(){} foo(); var x=foo; x();", noAlwaysUnresolvedFunctionCalls)
     reject("foo();", noAlwaysUnresolvedFunctionCalls)
