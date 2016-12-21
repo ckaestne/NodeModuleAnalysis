@@ -124,7 +124,7 @@ case class FunctionBody(inner: List[Stmt]) extends AST {
     s.getInnerStmt.map(findLocalVar).fold(s.getVarDecl.map(v => new LocalVariable(v.name.a)))(_ ++ _)
 
   private def findFunctionDeclarations(s: Stmt): List[LocalVariable] =
-    s.getInnerStmt.map(findLocalVar).fold(s.getFunDecl.map(v => new LocalVariable(v.name.a)))(_ ++ _)
+    s.getInnerStmt.map(findFunctionDeclarations).fold(s.getFunDecl.map(v => new LocalVariable(v.name.a)))(_ ++ _)
 }
 
 case class CompoundStmt(inner: List[Stmt]) extends Stmt {

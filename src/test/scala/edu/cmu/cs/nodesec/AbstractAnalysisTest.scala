@@ -61,7 +61,7 @@ abstract class AbstractAnalysisTest extends FunSuite {
 
     val json =
       Process(s"node esprint/parse2.js $file ${tmp.getAbsolutePath}").!
-    new JSASTParser().parse(tmp)
+    new JSASTParser().parse(tmp, new File(file))
   }
 
 

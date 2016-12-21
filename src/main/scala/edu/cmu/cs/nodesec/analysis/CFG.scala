@@ -233,7 +233,7 @@ object CFGBuilder {
       case ExpressionStmt(expr) =>
         _simpleStmt(_buildExpressionStmt(expr)._1)
       case ForInStmt(_, left, right, body, each) =>
-        ???
+        throw new NotImplementedError("for-in statement not supported yet")
       case CompoundStmt(Nil) =>
         _simpleStmt(Block.empty())
       case CompoundStmt(inner) =>

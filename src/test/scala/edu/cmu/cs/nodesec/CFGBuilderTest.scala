@@ -49,7 +49,7 @@ class CFGBuilderTest extends FunSuite {
 
     val json =
       Process("node esprint/parse.js").#<(new ByteArrayInputStream(s.getBytes("UTF-8"))).lineStream_!.head
-    val r= new JSASTParser().parse(json)
+    val r= new JSASTParser().parse(json, s)
 
 //    val p = new JSParser()
 //    val r = p.parseAll(p.Program, s)

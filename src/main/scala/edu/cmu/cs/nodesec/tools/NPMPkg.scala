@@ -47,7 +47,7 @@ object NPMPkg extends App {
       if (Process(s"node ../esprint/parse2.js $jsFile $astFile", workingDir).! != 0)
         throw new RuntimeException(s"pretty printing failed ($jsFile)\n")
 
-      val parsed = p.parse(astFile)
+      val parsed = p.parse(astFile, new File(workingDir,jsFile))
       (jsFile, parsed)
     }
 

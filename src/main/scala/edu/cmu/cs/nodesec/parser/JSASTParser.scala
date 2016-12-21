@@ -12,79 +12,42 @@ import scala.util.parsing.input.{NoPosition, Position, Positional}
   */
 class JSASTParser {
 
-
-  def parse(json_ast: String) = {
-    toProgram(Parser.parseFromString(json_ast)(JsStructure).get)
-  }
-
-  def parse(json_ast_file: File) = {
-    toProgram(Parser.parseFromFile(json_ast_file)(JsStructure).get)
-  }
-
-
-  private trait JsValue
-
-  private object JsNull extends JsValue
-
-  private object JsFalse extends JsValue
-
-  private object JsTrue extends JsValue
-
-  private case class JsNumber(v: String) extends JsValue
-
-  private case class JsString(v: String) extends JsValue
-
-  private case class JsArray(vs: List[JsValue]) extends JsValue
-
-  private case class JsObject(vs: Map[String, JsValue]) extends JsValue
+  import JSONParser._
 
   private case class ASTNode(t: String, vs: Map[String, JsValue], loc: Position) extends JsValue
 
-  private object JsStructure extends SimpleFacade[JsValue] {
-    def jnull() = JsNull
 
-    def jfalse() = JsFalse
-
-    def jtrue() = JsTrue
-
-    def jnum(s: String) = JsNumber(s)
-
-    def jint(s: String) = JsNumber(s)
-
-    def jstring(s: String) = JsString(s)
-
-    def jarray(vs: List[JsValue]) = JsArray(vs)
-
-    private class APosition(val line: Int, val column: Int) extends Position {
-      override protected def lineContents: String = ""
-    }
-
-    private def getLoc(vs: Map[String, JsValue]) = {
-      val startLoc = child(child(Some(vs), "loc"), "start")
-      if (startLoc.isDefined) {
-        new APosition(int(startLoc.get("line")), int(startLoc.get("column")))
-      } else NoPosition
-    }
-
-    private def int(v: JsValue) = v match {
-      case JsNumber(s) => s.toInt
-    }
-
-    private def child(m: Option[Map[String, JsValue]], f: String): Option[Map[String, JsValue]] = m.flatMap(m =>
-      m.get(f) match {
-        case Some(JsObject(m)) => Some(m)
-        case _ => None
-      }
-    )
-
-
-    def jobject(vs: Map[String, JsValue]) = {
+  class JsASTStructure(lines: Seq[String]) extends AbstractJsStructure {
+    override def jobject(vs: Map[String, JsValue]) = {
       val t = vs.get("type")
       t match {
         case Some(JsString(t)) => ASTNode(t, vs - "type" - "loc", getLoc(vs))
         case _ => JsObject(vs)
       }
     }
+
+    protected class APosition(val line: Int, val column: Int) extends Position {
+      override protected def lineContents: String = if (lines.length<=line) lines(line-1) else ""
+    }
+
+    protected def getLoc(vs: Map[String, JsValue]) = {
+      val startLoc = child(child(Some(vs), "loc"), "start")
+      if (startLoc.isDefined) {
+        new APosition(int(startLoc.get("line")), int(startLoc.get("column")))
+      } else NoPosition
+    }
+  }
+
+  def parse(json_ast: String): FunctionBody = {
+    toProgram(Parser.parseFromString(json_ast)(new JsASTStructure(Nil)).get)
+  }
+
+  def parse(json_ast: String, jscode: String): FunctionBody = {
+    toProgram(Parser.parseFromString(json_ast)(new JsASTStructure(jscode.split("\n"))).get)
+  }
+
+  def parse(json_ast_file: File, js_file: File): FunctionBody = {
+    toProgram(Parser.parseFromFile(json_ast_file)(new JsASTStructure(io.Source.fromFile(js_file).getLines().toSeq)).get)
   }
 
 
@@ -130,11 +93,11 @@ class JSASTParser {
     case ASTNode("BlockStatement", b, _) => CompoundStmt(m_array(b, "body").map(toStmt))
     case ASTNode("ExpressionStatement", b, _) => ExpressionStmt(toExpr(b("expression")))
     case ASTNode("IfStatement", b, _) => IfStmt(toExpr(b("test")), toStmt(b("consequent")), opt(toStmt, b("alternate")))
-    case ASTNode("LabeledStatement", b, _) => ???
+    case ASTNode("LabeledStatement", b, _) => throw new NotImplementedError("labeled statement not implemented yet")
     case ASTNode("BreakStatement", b, _) => BreakStmt(opt(toId, b("label")))
     case ASTNode("ContinueStatement", b, _) => ContinueStmt(opt(toId, b("label")))
-    case ASTNode("WithStatement", b, _) => ???
-    case ASTNode("SwitchStatement", b, _) => ???
+    case ASTNode("WithStatement", b, _) => throw new NotImplementedError("`with` statement not implemented yet")
+    case ASTNode("SwitchStatement", b, _) => throw new NotImplementedError("`switch` statement not implemented yet")
     case ASTNode("ThrowStatement", b, _) => ThrowStmt(toExpr(b("argument")))
     case ASTNode("TryStatement", b, _) => TryStmt(toStmt(b("block")), opt(toCatchClause, b("handler")), opt(toStmt, b("finalizer")))
     case ASTNode("ReturnStatement", b, _) => ReturnStmt(opt(toExpr, b("argument")))
@@ -146,9 +109,9 @@ class JSASTParser {
     case ASTNode("ForInStatement", b, _) =>
       val (decl, init) = toForInit(b("left"))
       ForInStmt(decl, init.get, toExpr(b("right")), toStmt(b("body")), toBool(b("each")))
-    case ASTNode("ForOfStatement", b, _) => ???
-    case ASTNode("LetStatement", b, _) => ???
-    case ASTNode("DebuggerStatement", b, _) => ???
+    case ASTNode("ForOfStatement", b, _) => throw new NotImplementedError("for-of statement not implemented yet")
+    case ASTNode("LetStatement", b, _) => throw new NotImplementedError("let statement not implemented yet")
+    case ASTNode("DebuggerStatement", b, _) => throw new NotImplementedError("`debugger` statement not implemented yet")
     case ASTNode("FunctionDeclaration", b, _) => FunDeclaration(
       toId(b("id")),
       m_array(b, "params").map(toId), //TODO pattern?
@@ -170,8 +133,7 @@ class JSASTParser {
           (Some(VarDef(d.name, None)), Some(AssignExpr(d.name, "=", d.init.get)))
         else
           (Some(VarDef(d.name, None)), Some(d.name))
-      case e@ASTNode("Expression", b, _) => (None, Some(toExpr(e)))
-      case JsNull => (None, None)
+      case expr => (None, Some(toExpr(expr)))
     }
 
   private def toVarDef(json: JsValue): VarDef = json match {
@@ -219,7 +181,7 @@ class JSASTParser {
         FunctionBody(List(toStmt(b("body"))))
         //TODO others
       )
-    case ASTNode("SequenceExpression", b, _) => ???
+    case ASTNode("SequenceExpression", b, _) => throw new NotImplementedError("sequence-expression statement not implemented yet")
     case ASTNode(x, b, _) if x == "UpdateExpression" || x == "UnaryExpression" =>
       if (toBool(b("prefix")))
         UnaryExpr(toString(b("operator")), toExpr(b("argument")))
@@ -257,3 +219,66 @@ class JSASTParser {
 
 }
 
+object JSONParser {
+
+  def parseJSON(json_ast_file: File): JsValue = {
+    Parser.parseFromFile(json_ast_file)(JsStructure).get
+  }
+
+
+  trait JsValue {
+    def child(n: String): Option[JsValue] = None
+  }
+
+  object JsNull extends JsValue
+
+  object JsFalse extends JsValue
+
+  object JsTrue extends JsValue
+
+  case class JsNumber(v: String) extends JsValue
+
+  case class JsString(v: String) extends JsValue
+
+  case class JsArray(vs: List[JsValue]) extends JsValue
+
+  case class JsObject(vs: Map[String, JsValue]) extends JsValue {
+    override def child(n: String) = vs.get(n)
+  }
+
+  trait AbstractJsStructure extends SimpleFacade[JsValue] {
+    def jnull() = JsNull
+
+    def jfalse() = JsFalse
+
+    def jtrue() = JsTrue
+
+    def jnum(s: String) = JsNumber(s)
+
+    def jint(s: String) = JsNumber(s)
+
+    def jstring(s: String) = JsString(s)
+
+    def jarray(vs: List[JsValue]) = JsArray(vs)
+
+
+
+    protected def int(v: JsValue) = v match {
+      case JsNumber(s) => s.toInt
+    }
+
+    protected def child(m: Option[Map[String, JsValue]], f: String): Option[Map[String, JsValue]] = m.flatMap(m =>
+      m.get(f) match {
+        case Some(JsObject(m)) => Some(m)
+        case _ => None
+      }
+    )
+
+
+  }
+
+  object JsStructure extends AbstractJsStructure {
+    def jobject(vs: Map[String, JsValue]) = JsObject(vs)
+  }
+
+}

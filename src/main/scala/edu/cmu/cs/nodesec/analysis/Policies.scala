@@ -189,7 +189,7 @@ object Policies {
     val f = (fun.allInnerFunctions + fun).find(retObjString startsWith _.uniqueId)
     if (f.isDefined)
       f.get.body.nodes.flatMap(_.s).
-        collect({ case c@Call(r, _, _, _) if fun.uniqueId + r == retObjString => c }).
+        collect({ case c@Call(r, _, _, _) if f.get.uniqueId + r == retObjString => c }).
         headOption.map(_.pos).getOrElse(NoPosition)
     else NoPosition
   }
