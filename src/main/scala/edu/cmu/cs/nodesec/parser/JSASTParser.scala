@@ -1,6 +1,7 @@
 package edu.cmu.cs.nodesec.parser
 
 import java.io.File
+import java.nio.channels.ReadableByteChannel
 
 import jawn.{Parser, SimpleFacade}
 
@@ -223,6 +224,9 @@ object JSONParser {
 
   def parseJSON(json_ast_file: File): JsValue = {
     Parser.parseFromFile(json_ast_file)(JsStructure).get
+  }
+  def parseJSON(json_ast_file: ReadableByteChannel): JsValue = {
+    Parser.parseFromChannel(json_ast_file)(JsStructure).get
   }
 
 
